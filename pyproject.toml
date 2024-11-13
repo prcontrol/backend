@@ -1,0 +1,24 @@
+[project]
+name = "prcontrol"
+version = "0.1.0"
+description = "Control & Data acuisition for Thiele-Labs photochemical reactor"
+authors = [
+	{name = "Finn Bender"},
+	{name = "Henri Dohmen"},
+	{name = "Maurice Duchmann"},
+	{name = "Omar Halaseh"},
+	{name = "Tim Jaeger"},
+]
+dependencies = []
+requires-python = ">=3.12"
+readme = "README.md"
+license = {file = "LICENSE"}
+
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+
+[tool.pdm]
+distribution = true
