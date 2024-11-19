@@ -15,9 +15,12 @@
 			"extensions": [
 				"ms-python.python",
 				"charliermarsh.ruff",
-				"ms-python.mypy-type-checker"
+				"ms-python.mypy-type-checker",
+				"EditorConfig.EditorConfig",
+				"tamasfe.even-better-toml",
+				"ms-python.vscode-pylance"
 			]
 		}
-		
+
 	}
 }

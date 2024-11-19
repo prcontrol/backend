@@ -27,3 +27,11 @@ dev = [
     "mypy>=1.13.0",
     "pytest>=8.3.3",
 ]
+
+[tool.mypy]
+strict = true
+
+[tool.pdm.scripts]
+check = "ruff check ."
+format = "ruff format ."
+tests = "pytest -v tests"
