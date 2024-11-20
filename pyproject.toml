@@ -1,0 +1,37 @@
+[project]
+name = "prcontrol"
+version = "0.1.0"
+description = "Control & Data acuisition for Thiele-Labs photochemical reactor"
+authors = [
+	{name = "Finn Bender"},
+	{name = "Henri Dohmen"},
+	{name = "Maurice Duchmann"},
+	{name = "Omar Halaseh"},
+	{name = "Tim Jaeger"},
+]
+dependencies = []
+requires-python = ">=3.12"
+readme = "README.md"
+license = {file = "LICENSE"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+distribution = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.7.4",
+    "mypy>=1.13.0",
+    "pytest>=8.3.3",
+]
+
+[tool.mypy]
+strict = true
+
+[tool.pdm.scripts]
+check = "ruff check ."
+format = "ruff format ."
+tests = "pytest -v tests"
