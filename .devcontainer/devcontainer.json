@@ -1,5 +1,5 @@
 {
-	"name": "Python 3",
+	"name": "Backend for prcontrol",
 	"build": {
 		"dockerfile": "Dockerfile",
 		"context": ".."
@@ -7,9 +7,6 @@
 	"features": {
 		"ghcr.io/devcontainers-extra/features/pdm:2": {}
 	},
-
-	"forwardPorts": [8080],
-
 	"customizations": {
 		"vscode": {
 			"extensions": [

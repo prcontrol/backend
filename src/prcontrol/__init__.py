@@ -1,3 +1,4 @@
-print("Hello World")
-while True:
-    ...
+__all__ = ["controller", "webapi"]
+
+import prcontrol.webapi as webapi
+import prcontrol.controller as controller
