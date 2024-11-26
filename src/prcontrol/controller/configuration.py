@@ -1,14 +1,17 @@
-from abc import ABC
-import attrs
-from typing import Type
 import json
+from abc import ABC, abstractmethod
+
+import attrs
 from cattr import structure, unstructure
+
 
 class JSONSeriablizable(ABC):
     @classmethod
-    def from_json[T](cls: Type[T], json_string: str | bytes | bytearray) -> T:
+    @abstractmethod
+    def from_json[T](cls: type[T], json_string: str | bytes | bytearray) -> T:
         return structure(json.loads(json_string), cls)
 
+    @abstractmethod
     def to_json(self) -> str:
         return json.dumps(unstructure(self))
 
