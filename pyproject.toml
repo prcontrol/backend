@@ -26,10 +26,30 @@ dev = [
     "ruff>=0.7.4",
     "mypy>=1.13.0",
     "pytest>=8.3.3",
+	"pre-commit>=4.0.1"
 ]
 
 [tool.mypy]
 strict = true
+
+[tool.ruff]
+line-length = 80
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "SIM", "I"]
+ignore = ["D417"]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+line-ending = "lf"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
 
 [tool.pdm.scripts]
 check = "ruff check ."
