@@ -28,10 +28,12 @@ class _BrickletRepr[T: Device]:
 def bricklet[T](bricklet_type: type[T], *, uid: str) -> T:
     """Defines a bricklet in a `TinkerForgeComponents` subclass."""
     # We do some type trickery here.
-    # However mypy thinks that the fields of the PhotoBox objects
-    # have the same type as the fields of the PhotBox class
+    # mypy thinks that the fields of PhotoBox objects have the same type
+    # as the fields of the PhotBox class.
     # We have to lie while defining the class fields
-    # to have the right types on the object.
+    # in order to have the right types on the object.
+    # Objects with the correct types are swapped in, when initializing
+    # in TinkerForgeComponents.__init__
     return _BrickletRepr[T](bricklet_type, uid)  #  type: ignore
 
 
