@@ -36,14 +36,14 @@ class _BrickletRepr[T: Device]:
 
 
 def bricklet[T: Device](bricklet_type: type[T], *, uid: str) -> T:
-    """Defines a bricklet in a `TinkerForgeComponents` subclass."""
+    """Defines a bricklet in a `BrickletManager` subclass."""
     # We do some type trickery here.
     # mypy thinks that the fields of PhotoBox objects have the same type
     # as the fields of the PhotBox class.
     # We have to lie while defining the class fields
     # in order to have the right types on the object.
     # Objects with the correct types are swapped in, when initializing
-    # in TinkerForgeComponents.__init__
+    # in BrickletManager.__init__
     return _BrickletRepr[T](bricklet_type, uid)  #  type: ignore
 
 
@@ -57,7 +57,7 @@ class BrickletManager:
 
     Example:
         class MyTinkerForgeBuild(BrickletManager):
-            io_bricklet           = bricklet(BrickletIO16V2, uid="XYZ")
+            io_bricklet = bricklet(BrickletIO16V2, uid="XYZ")
             termperature_bricklet = bricklet(BrickletTemperatureV2, uid="ABC")
 
         ipcon = IPConnection()
@@ -116,8 +116,8 @@ def establish_connection(
         ipcon.disconnect()
 
 
-# fmt: off
 class ReactorBoxBricklets(BrickletManager):
+    # fmt: off
     thermocouple   = bricklet(BrickletThermocoupleV2,  uid="232m")
     io             = bricklet(BrickletIO16V2,          uid="231w")
     ambient_light  = bricklet(BrickletAmbientLightV3,  uid="25sN")
@@ -126,8 +126,11 @@ class ReactorBoxBricklets(BrickletManager):
     lane_2_temp_ir = bricklet(BrickletTemperatureIRV2, uid="TzV")
     lane_3_temp_ir = bricklet(BrickletTemperatureIRV2, uid="TDe")
     uv_light       = bricklet(BrickletUVLightV2,       uid="MxN")
+    # fmt: on
+
 
 class StromBoxBricklets(BrickletManager):
+    # fmt: off
     dual_relay_1      = bricklet(BrickletIndustrialDualRelay, uid="221B")
     dual_relay_2      = bricklet(BrickletIndustrialDualRelay, uid="221s")
     dual_relay_3      = bricklet(BrickletIndustrialDualRelay, uid="221J")
@@ -143,7 +146,7 @@ class StromBoxBricklets(BrickletManager):
     voltage_current_5 = bricklet(BrickletVoltageCurrentV2,    uid="23jw")
     voltage_current_6 = bricklet(BrickletVoltageCurrentV2,    uid="23jv")
     servo             = bricklet(BrickletServoV2,             uid="SFe")
-# fmt: on
+    # fmt: on
 
 
 @attrs.define
@@ -230,17 +233,16 @@ class ReactorBoxClient:
         )
 
         self.bricklets.io.register_callback(
-            BrickletIO16V2.CALLBACK_INPUT_VALUE,
-            self._callback_single_input_io,
+            BrickletIO16V2.CALLBACK_INPUT_VALUE, self._callback_single_input_io
         )
         for chan, dir, val in self.IO16_CONF:
-            self.bricklets.io.set_configuration(chan, dir, val)
             if dir == "i":
                 # We set value_has_to_change to True because
                 # we don't want to log this kind of information
                 self.bricklets.io.set_input_value_callback_configuration(
                     chan, self.period_ms, True
                 )
+            self.bricklets.io.set_configuration(chan, dir, val)
 
         self.bricklets.ambient_light.register_callback(
             BrickletAmbientLightV3.CALLBACK_ILLUMINANCE,
@@ -272,8 +274,7 @@ class ReactorBoxClient:
             )
 
         self.bricklets.uv_light.register_callback(
-            BrickletUVLightV2.CALLBACK_UVI,
-            self._callback_uv_index,
+            BrickletUVLightV2.CALLBACK_UVI, self._callback_uv_index
         )
         self.bricklets.uv_light.set_uvi_callback_configuration(
             self.period_ms, False, "x", 0, 0
@@ -285,9 +286,9 @@ class ReactorBoxClient:
         # TODO: maybe remove callbacks
         return self
 
-    def _callback_thermocouple(self, hundreth_cel: int) -> None:
+    def _callback_thermocouple(self, hundreth_celsius: int) -> None:
         self.state.thermocouble_temp = Temperature.from_hundreth_celsius(
-            hundreth_cel
+            hundreth_celsius
         )
 
     def _callback_single_input_io(
@@ -319,18 +320,18 @@ class ReactorBoxClient:
     def _callback_ambient_light(self, hundreth_lux: int) -> None:
         self.state.ambient_light = Illuminance.from_hundreth_lux(hundreth_lux)
 
-    def _callback_temperature(self, hundreth_cel: int) -> None:
+    def _callback_temperature(self, hundreth_celsius: int) -> None:
         self.state.ambient_temperature = Temperature.from_hundreth_celsius(
-            hundreth_cel
+            hundreth_celsius
         )
 
-    def _callback_temp_object_ir(self, lane: int, tenth_cel: int) -> None:
+    def _callback_temp_object_ir(self, lane: int, tenth_celsius: int) -> None:
         self.state.lane_ir_temp[lane] = Temperature.from_tenth_celsius(
-            tenth_cel
+            tenth_celsius
         )
 
-    def _callback_uv_index(self, tenth_uvi: int) -> None:
-        self.state.uv_index = UvIndex(tenth_uvi=tenth_uvi)
+    def _callback_uv_index(self, tenth_uv_index: int) -> None:
+        self.state.uv_index = UvIndex(tenth_uvi=tenth_uv_index)
 
 
 if __name__ == "__main__":
