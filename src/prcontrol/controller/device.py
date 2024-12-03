@@ -2,29 +2,25 @@
 # We dont have typing information for tinkerforge unfurtunately :(
 
 import logging
+from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from contextlib import contextmanager
-from functools import partial
-from time import sleep
-from typing import Any, Self
+from enum import Enum
+from typing import Any
 
 import attrs
-from tinkerforge.bricklet_ambient_light_v3 import BrickletAmbientLightV3
-from tinkerforge.bricklet_industrial_dual_relay import (
-    BrickletIndustrialDualRelay,
-)
 from tinkerforge.bricklet_io16_v2 import BrickletIO16V2
-from tinkerforge.bricklet_servo_v2 import BrickletServoV2
-from tinkerforge.bricklet_temperature_ir_v2 import BrickletTemperatureIRV2
-from tinkerforge.bricklet_temperature_v2 import BrickletTemperatureV2
-from tinkerforge.bricklet_thermocouple_v2 import BrickletThermocoupleV2
-from tinkerforge.bricklet_uv_light_v2 import BrickletUVLightV2
-from tinkerforge.bricklet_voltage_current_v2 import BrickletVoltageCurrentV2
 from tinkerforge.ip_connection import Device, IPConnection
 
-from prcontrol.controller.measurements import Illuminance, Temperature, UvIndex
-
 logger = logging.getLogger(__name__)
+
+
+class LedState(Enum):
+    UNDEFINED = -1
+    LOW = 0
+    HIGH = 1
+    BLINK_SLOW = 500
+    BLINK_FAST = 200
 
 
 @attrs.frozen
@@ -116,233 +112,90 @@ def establish_connection(
         ipcon.disconnect()
 
 
-class ReactorBoxBricklets(BrickletManager):
-    # fmt: off
-    thermocouple   = bricklet(BrickletThermocoupleV2,  uid="232m")
-    io             = bricklet(BrickletIO16V2,          uid="231w")
-    ambient_light  = bricklet(BrickletAmbientLightV3,  uid="25sN")
-    temperature    = bricklet(BrickletTemperatureV2,   uid="ZQH")
-    lane_1_temp_ir = bricklet(BrickletTemperatureIRV2, uid="Tzv")
-    lane_2_temp_ir = bricklet(BrickletTemperatureIRV2, uid="TzV")
-    lane_3_temp_ir = bricklet(BrickletTemperatureIRV2, uid="TDe")
-    uv_light       = bricklet(BrickletUVLightV2,       uid="MxN")
-    # fmt: on
+class StatusLeds(ABC):
+    """Convenience class for the I/O-16 bricklet
 
+    This class is for namespacing and easy control of LEDs using properties.
+    """
 
-class StromBoxBricklets(BrickletManager):
-    # fmt: off
-    dual_relay_1      = bricklet(BrickletIndustrialDualRelay, uid="221B")
-    dual_relay_2      = bricklet(BrickletIndustrialDualRelay, uid="221s")
-    dual_relay_3      = bricklet(BrickletIndustrialDualRelay, uid="221J")
-    dual_relay_4      = bricklet(BrickletIndustrialDualRelay, uid="221K")
-    dual_relay_5      = bricklet(BrickletIndustrialDualRelay, uid="221L")
-    dual_relay_6      = bricklet(BrickletIndustrialDualRelay, uid="221A")
-    io                = bricklet(BrickletIO16V2,              uid="231g")
-    temperature       = bricklet(BrickletTemperatureV2,       uid="ZQZ")
-    voltage_current_1 = bricklet(BrickletVoltageCurrentV2,    uid="23j6")
-    voltage_current_2 = bricklet(BrickletVoltageCurrentV2,    uid="23jJ")
-    voltage_current_3 = bricklet(BrickletVoltageCurrentV2,    uid="23jd")
-    voltage_current_4 = bricklet(BrickletVoltageCurrentV2,    uid="23jD")
-    voltage_current_5 = bricklet(BrickletVoltageCurrentV2,    uid="23jw")
-    voltage_current_6 = bricklet(BrickletVoltageCurrentV2,    uid="23jv")
-    servo             = bricklet(BrickletServoV2,             uid="SFe")
-    # fmt: on
+    _bricklet: BrickletIO16V2
+    _blinking_io16_channels: dict[int, int]
 
+    def __init__(self, bricklet: BrickletIO16V2):
+        super().__init__()
+        self._bricklet = bricklet
+        self._blinking_io16_channels = dict()
 
-@attrs.define
-class ReactorBoxSensors:
-    thermocouble_temp: Temperature | None
-    ambient_light: Illuminance | None
-    ambient_temperature: Temperature | None
-    lane_ir_temp: list[Temperature | None]
-    uv_index: UvIndex | None
+    def initialize(self) -> None:
+        """Registers the necessary callbacks for blinking LEDs on IO bricklets
+        Sets channels to input/output accorting to `is_output_channel`.
+        """
 
-    sample_lane_1: bool | None
-    sample_lane_2: bool | None
-    sample_lane_3: bool | None
-    maintenance_mode: bool | None
-    photobox_cable_control: bool | None
+        self._bricklet.register_callback(
+            BrickletIO16V2.CALLBACK_MONOFLOP_DONE,
+            self._callback_io_16_led_blink,
+        )
+
+        for channel in range(16):
+            direction = "i" if self.is_input_channel(channel) else "o"
+            self._bricklet.set_configuration(channel, direction, True)
 
     @staticmethod
-    def empty() -> "ReactorBoxSensors":
-        return ReactorBoxSensors(
-            thermocouble_temp=None,
-            ambient_light=None,
-            ambient_temperature=None,
-            lane_ir_temp=[None, None, None],
-            uv_index=None,
-            sample_lane_1=None,
-            sample_lane_2=None,
-            sample_lane_3=None,
-            maintenance_mode=None,
-            photobox_cable_control=None,
-        )
+    def led(channel: int) -> LedState:
+        """Creates a property for an Led.
 
+        The field will automatically set the TinkerForge IO16-Led to the
+        supplied value.
+        """
+        value_box: list[LedState] = [LedState.UNDEFINED]  # use a list as a box
 
-@attrs.define
-class ReactorBoxClient:
-    bricklets: ReactorBoxBricklets
-    state: ReactorBoxSensors = attrs.field(factory=ReactorBoxSensors.empty)
-    period_ms: int = 100
+        def _set_led(self: "StatusLeds", new_value: LedState) -> None:
+            if new_value == value_box[0]:
+                return
+            value_box[0] = new_value
+            if (
+                new_value == LedState.BLINK_SLOW
+                or new_value == LedState.BLINK_FAST
+            ):
+                self._blink_led(channel, new_value.value)
+            elif new_value == LedState.HIGH:
+                self._blink_stop_led(channel)
+                self._set_led(channel, True)
+            elif new_value == LedState.LOW:
+                self._blink_stop_led(channel)
+                self._set_led(channel, False)
 
-    _LED_STATE_LANE_1 = 3
-    _LED_STATE_LANE_2 = 4
-    _LED_STATE_LANE_3 = 5
-    _LED_UV_INSTALLED = 6
-    _LED_WARNING_UV = 7
-    _LED_EXPERIMENT_RUNNING = 8
-    _LED_WARNING_TEMP_LANE_1 = 9
-    _LED_WARNING_TEMP_LANE_2 = 10
-    _LED_WARNING_TEMP_LANE_3 = 11
-    _LED_WARNING_TEMP_AMBIENT = 12
-    _LED_WARNING_THERMOCOUPLE = 13
+        def _get_led(_self: "StatusLeds") -> LedState:
+            return value_box[0]
 
-    _INPUT_SAMPLE_LANE_1 = 0
-    _INPUT_SAMPLE_LANE_2 = 1
-    _INPUT_SAMPLE_LANE_3 = 2
-    _INPUT_MAINTENANCE_MODE = 14
-    _INPUT_PHOTOBOX_CABLE_CONTROL = 15
+        # type trickery: we lie about the return value
+        # because property attaches the necessary getters and setters
+        return property(_get_led, _set_led)  # type: ignore
 
-    IO16_CONF = (  # channel, direction, initial # TODO use constants
-        (0, "i", False),  # Sample Lane 1
-        (1, "i", False),  # Sample Lane 2
-        (2, "i", False),  # Sample Lane 3
-        (3, "o", False),  # State Lane 1
-        (4, "o", False),  # State Lane 1
-        (5, "o", False),  # State Lane 1
-        (6, "o", False),  # uv led installed
-        (7, "o", False),  # uv measured
-        (8, "o", False),  # experiment ongoing
-        (9, "o", True),  # logic ir temp error lane 1
-        (10, "o", True),  # logic ir temp error lane 2
-        (11, "o", True),  # logic ir temp error lane 3
-        (12, "o", True),  # logic ambient temp error (PhotoBox)
-        (13, "o", True),  # logic thermocouple temp error
-        (14, "i", False),  # maintenence mode
-        (15, "i", False),  # cable control
-    )
+    def is_input_channel(self, channel: int) -> bool:
+        return not self.is_output_channel(channel)
 
-    def initialize(self) -> Self:
-        """Register the callbacks and set i/o direction."""
-        self.bricklets.thermocouple.register_callback(
-            BrickletThermocoupleV2.CALLBACK_TEMPERATURE,
-            self._callback_thermocouple,
-        )
-        self.bricklets.thermocouple.set_temperature_callback_configuration(
-            self.period_ms, False, "x", 0, 0
-        )
+    @abstractmethod
+    def is_output_channel(self, channel: int) -> bool:
+        raise NotImplementedError("Abstractmethod must be overwritten")
 
-        self.bricklets.io.register_callback(
-            BrickletIO16V2.CALLBACK_INPUT_VALUE, self._callback_single_input_io
-        )
-        for chan, dir, val in self.IO16_CONF:
-            if dir == "i":
-                # We set value_has_to_change to True because
-                # we don't want to log this kind of information
-                self.bricklets.io.set_input_value_callback_configuration(
-                    chan, self.period_ms, True
-                )
-            self.bricklets.io.set_configuration(chan, dir, val)
+    def _callback_io_16_led_blink(self, channel: int, val: bool) -> None:
+        """A monoflop callback for io16 that oscilates `channel_to_blink`"""
+        duration_ms = self._blinking_io16_channels.get(channel)
+        if duration_ms is None:
+            return
+        self._bricklet.set_monoflop(channel, val, duration_ms)
 
-        self.bricklets.ambient_light.register_callback(
-            BrickletAmbientLightV3.CALLBACK_ILLUMINANCE,
-            self._callback_ambient_light,
-        )
-        self.bricklets.ambient_light.set_illuminance_callback_configuration(
-            self.period_ms, False, "x", 0, 0
-        )
+    def _set_led(self, channel: int, value: bool) -> None:
+        assert self.is_output_channel(channel)
+        self._bricklet.set_selected_value(channel, value)
 
-        self.bricklets.temperature.register_callback(
-            BrickletTemperatureV2.CALLBACK_TEMPERATURE,
-            self._callback_temperature,
-        )
-        self.bricklets.temperature.set_temperature_callback_configuration(
-            self.period_ms, False, "x", 0, 0
-        )
+    def _blink_led(self, channel: int, period_ms: int) -> None:
+        assert self.is_output_channel(channel)
+        self._blinking_io16_channels[channel] = period_ms
+        # Bootstrap blinking
+        self._callback_io_16_led_blink(channel, True)
 
-        for sensor, lane in (
-            (self.bricklets.lane_1_temp_ir, 0),
-            (self.bricklets.lane_2_temp_ir, 1),
-            (self.bricklets.lane_3_temp_ir, 2),
-        ):
-            sensor.register_callback(
-                BrickletTemperatureIRV2.CALLBACK_OBJECT_TEMPERATURE,
-                partial(self._callback_temp_object_ir, lane),
-            )
-            sensor.set_object_temperature_callback_configuration(
-                self.period_ms, False, "x", 0, 0
-            )
-
-        self.bricklets.uv_light.register_callback(
-            BrickletUVLightV2.CALLBACK_UVI, self._callback_uv_index
-        )
-        self.bricklets.uv_light.set_uvi_callback_configuration(
-            self.period_ms, False, "x", 0, 0
-        )
-
-        return self
-
-    def uninitialize(self) -> Self:
-        # TODO: maybe remove callbacks
-        return self
-
-    def _callback_thermocouple(self, hundreth_celsius: int) -> None:
-        self.state.thermocouble_temp = Temperature.from_hundreth_celsius(
-            hundreth_celsius
-        )
-
-    def _callback_single_input_io(
-        self,
-        channel: int,
-        changed: bool,
-        value: bool,
-    ) -> None:
-        if channel == self._INPUT_SAMPLE_LANE_1:
-            ...  # TODO: Handle _INPUT_SAMPLE_LANE_1
-        elif channel == self._INPUT_SAMPLE_LANE_2:
-            ...  # TODO: Handle _INPUT_SAMPLE_LANE_2
-        elif channel == self._INPUT_SAMPLE_LANE_3:
-            ...  # TODO: Handle _INPUT_SAMPLE_LANE_3
-        elif channel == self._INPUT_MAINTENANCE_MODE:
-            ...  # TODO: Handle _INPUT_MAINTENANCE_MODE
-        elif channel == self._INPUT_PHOTOBOX_CABLE_CONTROL:
-            ...  # TODO: Handle _INPUT_PHOTOBOX_CABLE_CONTROL
-        else:
-            # This might be an output channel
-            ...  # TODO: Handle Unknown channel
-
-    def _callback_all_input_io(
-        self, changes: list[bool], vals: list[bool]
-    ) -> None:
-        for chan, (changed, val) in enumerate(zip(changes, vals, strict=True)):
-            self._callback_single_input_io(chan, changed, val)
-
-    def _callback_ambient_light(self, hundreth_lux: int) -> None:
-        self.state.ambient_light = Illuminance.from_hundreth_lux(hundreth_lux)
-
-    def _callback_temperature(self, hundreth_celsius: int) -> None:
-        self.state.ambient_temperature = Temperature.from_hundreth_celsius(
-            hundreth_celsius
-        )
-
-    def _callback_temp_object_ir(self, lane: int, tenth_celsius: int) -> None:
-        self.state.lane_ir_temp[lane] = Temperature.from_tenth_celsius(
-            tenth_celsius
-        )
-
-    def _callback_uv_index(self, tenth_uv_index: int) -> None:
-        self.state.uv_index = UvIndex(tenth_uvi=tenth_uv_index)
-
-
-if __name__ == "__main__":
-    HOST, PORT = "127.0.0.1", 4223
-
-    ipcon = IPConnection()
-    bricklets = ReactorBoxBricklets(ipcon)
-    client = ReactorBoxClient(bricklets)
-
-    with establish_connection(ipcon, HOST, PORT):
-        client.initialize()
-        while 1:
-            print(client.state)
-            sleep(1)
+    def _blink_stop_led(self, channel: int) -> None:
+        if channel in self._blinking_io16_channels:
+            self._blinking_io16_channels.pop(channel)

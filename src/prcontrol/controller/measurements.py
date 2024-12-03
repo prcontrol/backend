@@ -50,3 +50,11 @@ class UvIndex:
     @property
     def uvi(self) -> float:
         return self.tenth_uvi / 10.0
+
+
+@frozen
+class Voltage: ...  # TODO
+
+
+@frozen
+class Current: ...  # TODO
