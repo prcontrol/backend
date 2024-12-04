@@ -8,6 +8,7 @@ from prcontrol.controller.configuration import LED, EmmissionPair
 def test_deserialise():
     json_string = """{
         "uid" : 0,
+        "name" : "name",
         "fwhm" : 1,
         "max_of_emission" : 2,
         "min_wavelength" : 3,
@@ -37,6 +38,7 @@ def test_deserialise():
 
     assert parsed_led == LED(
         uid=0,
+        name="name",
         fwhm=1,
         max_of_emission=2,
         min_wavelength=3,
@@ -60,6 +62,7 @@ def test_deserialise():
 def test_serialise_to_json():
     led = LED(
         uid=0,
+        name="name",
         fwhm=1,
         max_of_emission=2,
         min_wavelength=3,
@@ -85,6 +88,7 @@ def test_serialise_to_json():
     # to lower python tuples to arrays
     assert json.loads(json.dumps(unstructure(led))) == json.loads("""{
         "uid" : 0,
+        "name" : "name",
         "fwhm" : 1,
         "max_of_emission" : 2,
         "min_wavelength" : 3,
