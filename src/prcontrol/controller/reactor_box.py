@@ -139,17 +139,18 @@ class ReactorBox:
             self.sensor_period_ms, False, "x", 0, 0
         )
 
+        self.io_panel.initialize()
         self.bricklets.io.register_callback(
             BrickletIO16V2.CALLBACK_INPUT_VALUE,
             self._callback_io16_single_input,
         )
-        self.io_panel.initialize()
         for channel in range(16):
             # We set value_has_to_change to True because
-            # we don't want to log this kind of information
-            self.bricklets.io.set_input_value_callback_configuration(
-                channel, self.sensor_period_ms, True
-            )
+            # we don'- want to log this kind of information
+            if self.io_panel.is_input_channel(channel):
+                self.bricklets.io.set_input_value_callback_configuration(
+                    channel, self.sensor_period_ms, True
+                )
 
         self.bricklets.ambient_light.register_callback(
             BrickletAmbientLightV3.CALLBACK_ILLUMINANCE,
@@ -244,17 +245,3 @@ class ReactorBox:
 
     def _callback_uv_light(self, tenth_uv_index: int) -> None:
         self.sensors.uv_index = UvIndex(tenth_uvi=tenth_uv_index)
-
-
-if __name__ == "__main__":
-    from tinkerforge.ip_connection import IPConnection
-
-    ipcon = IPConnection()
-
-    bricklets = ReactorBoxBricklets(ipcon)
-    reactor_box = ReactorBox(bricklets)
-
-    ipcon.connect("127.0.0.1", 4223)
-    reactor_box.initialize()
-
-    raise ValueError()  # Enter REPL

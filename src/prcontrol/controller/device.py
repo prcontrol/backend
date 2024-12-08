@@ -131,14 +131,14 @@ class StatusLeds(ABC):
         Sets channels to input/output accorting to `is_output_channel`.
         """
 
+        for channel in range(16):
+            direction = "i" if self.is_input_channel(channel) else "o"
+            self._bricklet.set_configuration(channel, direction, True)
+
         self._bricklet.register_callback(
             BrickletIO16V2.CALLBACK_MONOFLOP_DONE,
             self._callback_io_16_led_blink,
         )
-
-        for channel in range(16):
-            direction = "i" if self.is_input_channel(channel) else "o"
-            self._bricklet.set_configuration(channel, direction, True)
 
     @staticmethod
     def led(channel: int) -> LedState:
