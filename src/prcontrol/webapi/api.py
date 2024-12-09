@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from flask import Flask, Request, request
 from flask.typing import ResponseReturnValue
@@ -8,6 +9,8 @@ from prcontrol.controller.config_manager import ConfigFolder, ConfigManager
 
 app = Flask(__name__)
 CORS(app)
+
+config_manager = ConfigManager()
 
 
 @app.route("/", methods=["GET"])
@@ -27,7 +30,7 @@ def bricklet() -> ResponseReturnValue:
 
 @app.route("/exp_tmp", methods=["GET", "POST", "DELETE"])
 def exp_tmp() -> ResponseReturnValue:
-    return handle_config_api(config_manager.exp_templates, request)
+    return handle_config_api(config_manager.experiment_templates, request)
 
 
 @app.route("/config", methods=["GET", "POST", "DELETE"])
@@ -52,7 +55,7 @@ def list_bricklets() -> ResponseReturnValue:
 
 @app.route("/list_exp_tmp", methods=["GET"])
 def list_exp_tmps() -> ResponseReturnValue:
-    return handle_list_api(config_manager.exp_templates, request)
+    return handle_list_api(config_manager.experiment_templates, request)
 
 
 @app.route("/list_config", methods=["GET"])
@@ -65,46 +68,60 @@ def list_experiments() -> ResponseReturnValue:
     return handle_list_api(config_manager.experiments, request)
 
 
-# Generic helping methods start here
-
-config_manager = ConfigManager()
-
-
-def handle_config_api(dir: ConfigFolder, req: Request) -> ResponseReturnValue:
-    if req.method == "POST":
-        file = req.files["file"]
+def handle_config_api(
+    folder: ConfigFolder[Any], request: Request
+) -> ResponseReturnValue:
+    if request.method == "POST":
+        print(request)
+        file = request.files["file"]
         if not file:
             return "post expects a file", 400
-        dir.add(file.stream.read())
+        folder.add_from_json(file.stream.read())
         return "success", 200
 
-    elif req.method == "GET":
-        uid = req.args.get("uid")
-        if not uid:
+    elif request.method == "GET":
+        _uid = request.args.get("uid")
+        if not _uid:
             return "get expects argument uid", 400
 
         try:
-            json = dir.load(uid)
-            return json, 200
+            uid = int(_uid)
+        except ValueError:
+            return "uid must be integral", 400
+
+        try:
+            config = folder.load(uid)
+            return config.to_json(), 200
         except FileNotFoundError:
             return "file does not exist", 400
 
-    elif req.method == "DELETE":
-        uid = req.args.get("uid")
-        if not uid:
+    elif request.method == "DELETE":
+        _uid = request.args.get("uid")
+        if not _uid:
             return "delete expects argument uid", 400
-        dir.delete(uid)
+
+        try:
+            uid = int(_uid)
+        except ValueError:
+            return "uid must be integral", 400
+
+        folder.delete(uid)
         return "success", 200
 
+    raise RuntimeError("We should never get here")
 
-def handle_list_api(folder: ConfigFolder) -> ResponseReturnValue:
-    json_obj = {
-        "results": list(
-            map(
-                lambda uid: {"uid": uid, "name": folder.get_name_of(uid)},
-                folder.configs,
-            )
-        )
-    }
 
-    return json.dumps(json_obj), 200
+def handle_list_api(
+    folder: ConfigFolder[Any], request: Request
+) -> ResponseReturnValue:
+    assert request.method == "GET"
+
+    list_of_configs = [
+        {
+            "uid": config_object.get_uid(),
+            "description": config_object.get_description(),
+        }
+        for config_object in folder.load_all()
+    ]
+
+    return json.dumps({"results": list_of_configs}), 200
