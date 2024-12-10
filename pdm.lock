@@ -5,6 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
+
 content_hash = "sha256:f6d2ce03819b2d1441660046699924e003f3ef5ce183e27b58a3eb9603d60bee"
 
 [[metadata.targets]]
