@@ -5,7 +5,8 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:5d9125978cc14b478b4d0e01235f6d682ac34f0375501e04c77ba1b05a98b16f"
+
+content_hash = "sha256:f6d2ce03819b2d1441660046699924e003f3ef5ce183e27b58a3eb9603d60bee"
 
 [[metadata.targets]]
 requires_python = ">=3.12"
@@ -400,6 +401,15 @@ files = [
     {file = "ruff-0.7.4-py3-none-win_amd64.whl", hash = "sha256:745775c7b39f914238ed1f1b0bebed0b9155a17cd8bc0b08d3c87e4703b990d6"},
     {file = "ruff-0.7.4-py3-none-win_arm64.whl", hash = "sha256:11bff065102c3ae9d3ea4dc9ecdfe5a5171349cdd0787c1fc64761212fc9cf1f"},
     {file = "ruff-0.7.4.tar.gz", hash = "sha256:cd12e35031f5af6b9b93715d8c4f40360070b2041f81273d0527683d5708fce2"},
+]
+
+[[package]]
+name = "tinkerforge"
+version = "2.1.31"
+summary = "Python API Bindings for Tinkerforge Bricks and Bricklets"
+groups = ["default"]
+files = [
+    {file = "tinkerforge-2.1.31.tar.gz", hash = "sha256:e6fa1e395de53f9a1533c2a1262cd67c26cd20070ddd265f16516140ae33bd85"},
 ]
 
 [[package]]
