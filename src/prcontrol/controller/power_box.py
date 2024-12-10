@@ -100,14 +100,36 @@ class PowerBoxStatusLeds(StatusLeds):
 class PowerBox:
     bricklets: PowerBoxBricklets
 
+    sensors: PowerBoxSensorStates
     io_panel: PowerBoxStatusLeds
 
     def __init__(self, bricklets: PowerBoxBricklets) -> None:
         self.bricklets = bricklets
-        self.io_panel = PowerBoxStatusLeds(self)
+        self.io_panel = PowerBoxStatusLeds(bricklets.io)
 
     def initialize(self) -> Self:
         self.io_panel.initialize()
+        self.bricklets.io.register_callback(
+            BrickletIO16V2.CALLBACK_INPUT_VALUE,
+            self._callback_io16_single_input,
+        )
+        for channel in range(16):
+            # We set value_has_to_change to True because
+            # we don't want to log this kind of information
+            self.bricklets.io.set_input_value_callback_configuration(
+                channel, self.sensor_period_ms, True
+            )
+
+        self.bricklets.temperature.register_callback(
+            BrickletTemperatureV2.CALLBACK_TEMPERATURE,
+            self._callback_temperature,
+        )
+        self.bricklets.temperature.set_temperature_callback_configuration(
+            self.sensor_period_ms, False, "x", 0, 0
+        )
+
+        # TODO: voltage/current callbacks
+
         return self
 
     def _callback_io16_single_input(
@@ -124,3 +146,16 @@ class PowerBox:
     ) -> None:
         for chan, (changed, val) in enumerate(zip(changes, vals, strict=True)):
             self._callback_io16_single_input(chan, changed, val)
+
+    def _callback_temperature(self, hundreth_celsius: int) -> None:
+        self.sensors.abmient_temperature = Temperature.from_hundreth_celsius(
+            hundreth_celsius
+        )
+
+    def _callback_total_voltage(self, _: int) -> None: ...  # TODO
+
+    def _callback_total_current(self, _: int) -> None: ...  # TODO
+
+    def _callback_lane_voltage(self, _: int) -> None: ...  # TODO
+
+    def _callback_lane_current(self, _: int) -> None: ...  # TODO
