@@ -29,13 +29,11 @@ class ConfigFolder[T: ConfigObject]:
     def __attrs_post_init__(self) -> None:
         if not os.path.isdir(self.workspace):
             os.makedirs(self.workspace)
-        self.update()
+        self._update()
 
-    def _path_of_uid(self, uid: int) -> pathlib.Path:
-        return self.workspace / f"obj_{uid}.json"
-
-    def update(self) -> None:
-        """Update configuration files from disk."""
+    def _update(self) -> None:
+        """Helper Method: Update configuration files from disk.
+        Runs only after Initilization!"""
         for file_path in os.listdir(self.workspace):
             _match = self._FILENAME_PATTERN.fullmatch(file_path)
             if _match is None:
@@ -43,6 +41,9 @@ class ConfigFolder[T: ConfigObject]:
 
             id = int(_match.groups()[0])
             self._configs.add(id)
+
+    def _path_of_uid(self, uid: int) -> pathlib.Path:
+        return self.workspace / f"obj_{uid}.json"
 
     def load(self, uid: int) -> ConfigObject:
         """Get configuration with given `uid`.
@@ -82,7 +83,6 @@ class ConfigFolder[T: ConfigObject]:
             self._configs.remove(uid)
 
     def load_all(self) -> Iterable[ConfigObject]:
-        self.update()
         for uid in self._configs:
             yield self.load(uid)
 
