@@ -2,6 +2,7 @@ import os
 import shutil
 
 import attrs
+import pytest
 
 from prcontrol.controller.config_manager import ConfigFolder
 from prcontrol.controller.configuration import ConfigObject
@@ -36,86 +37,75 @@ def init_test_folder(
     return dir
 
 
-def test_creation_of_new_folder():
-    clean("./test/")
-    dir = init_test_folder(0, "./test/")
+@pytest.fixture
+def dir_path():
+    dir_path = "./test/"
+    clean(dir_path)
+    yield dir_path
+    clean(dir_path)
+
+
+def test_creation_of_new_folder(dir_path):
+    dir = init_test_folder(0, dir_path)
     assert len(dir._configs) == 0
     assert len(os.listdir(dir.workspace)) == 0
-    clean("./test/")
 
 
-def test_opening_existing_folder():
-    clean("./test/")
-    wrk_spc = init_test_folder(4, "./test/").workspace
+def test_opening_existing_folder(dir_path):
+    wrk_spc = init_test_folder(4, dir_path).workspace
     new_dir = ConfigFolder(wrk_spc, MyConfigTestObject)
     assert len(new_dir._configs) == 4
-    clean("./test/")
 
 
-def test_adding_json():
-    clean("./test/")
-    dir = init_test_folder(0, "./test/")
+def test_adding_json(dir_path):
+    dir = init_test_folder(0, dir_path)
     obj = MyConfigTestObject(0, "new object")
     dir.add(obj)
     assert len(dir._configs) == 1
     assert len(os.listdir(dir.workspace)) == 1
-    clean("./test/")
 
 
-def test_loading_json():
-    clean("./test/")
-    dir = init_test_folder(0, "./test/")
+def test_loading_json(dir_path):
+    dir = init_test_folder(0, dir_path)
     obj = MyConfigTestObject(0, "new object")
     dir.add(obj)
     loaded_obj = dir.load(0)
     assert loaded_obj == MyConfigTestObject(uid=0, name="new object")
-    clean("./test/")
 
 
-def test_overwriting_json():
-    clean("./test/")
-    dir = init_test_folder(1, "./test/")
+def test_overwriting_json(dir_path):
+    dir = init_test_folder(1, dir_path)
     obj = MyConfigTestObject(0, "new name")
     dir.add(obj)
     assert len(dir._configs) == 1
     assert len(os.listdir(dir.workspace)) == 1
     loaded_obj = dir.load(0)
     assert loaded_obj.name == "new name"
-    clean("./test/")
 
 
-def test_load_not_existing_json():
-    clean("./test/")
-    dir = init_test_folder(2, "./test/")
+def test_load_not_existing_json(dir_path):
+    dir = init_test_folder(2, dir_path)
     try:
         _ = dir.load(5)
-        clean("./test/")
         raise AssertionError()
     except FileNotFoundError:
         assert True
-        clean("./test/")
 
 
-def test_deleting_json():
-    clean("./test/")
-    dir = init_test_folder(1, "./test/")
+def test_deleting_json(dir_path):
+    dir = init_test_folder(1, dir_path)
     dir.delete(0)
     assert len(dir._configs) == 0
     assert len(os.listdir(dir.workspace)) == 0
-    clean("./test/")
 
 
-def test_deleting_not_existing_json():
-    clean("./test/")
-    dir = init_test_folder(5, "./test/")
+def test_deleting_not_existing_json(dir_path):
+    dir = init_test_folder(5, dir_path)
     dir.delete(40)
     assert len(dir._configs) == 5
     assert len(os.listdir(dir.workspace)) == 5
-    clean("./test/")
 
 
-def test_list_all_json():
-    clean("./test/")
-    dir = init_test_folder(5, "./test/")
+def test_list_all_json(dir_path):
+    dir = init_test_folder(5, dir_path)
     assert len(list(dir.load_all())) == 5
-    clean("/test/")
