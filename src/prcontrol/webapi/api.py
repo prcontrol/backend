@@ -72,12 +72,12 @@ def handle_config_api(
     folder: ConfigFolder[Any], request: Request
 ) -> ResponseReturnValue:
     if request.method == "POST":
-        print(request)
-        file = request.files["file"]
-        if not file:
-            return "post expects a file", 400
-        folder.add_from_json(file.stream.read())
-        return "success", 200
+        try:
+            file = request.files["json_file"]
+            folder.add_from_json(file.stream.read())
+            return "success", 200
+        except Exception:
+            return "post expects a json_file", 400
 
     elif request.method == "GET":
         _uid = request.args.get("uid")
@@ -87,7 +87,7 @@ def handle_config_api(
         try:
             uid = int(_uid)
         except ValueError:
-            return "uid must be integral", 400
+            return "uid must be integer", 400
 
         try:
             config = folder.load(uid)

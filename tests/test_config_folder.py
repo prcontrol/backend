@@ -32,7 +32,7 @@ def init_test_folder(
 
     for i in range(num_elements):
         obj = MyConfigTestObject(uid=i, name=f"default_obj_{i}")
-        dir.add_from_json(obj.to_json())
+        dir.add(obj)
 
     return dir
 
