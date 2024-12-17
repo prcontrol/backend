@@ -7,8 +7,6 @@ from functools import partial
 from typing import Self
 
 import attrs
-import tinkerforge
-import tinkerforge.ip_connection
 from tinkerforge.bricklet_industrial_dual_relay import (
     BrickletIndustrialDualRelay,
 )
@@ -418,7 +416,6 @@ class PowerBox:
                 return 9
         raise RuntimeError("Impossible LED!")
 
-    #
     def _get_servo_channels(self) -> Iterable[int]:
         return map(self._get_servo_channel_from_led, Led.possible_leds())
 
@@ -491,24 +488,3 @@ class PowerBox:
         return self
 
     # TODO: Feedback loop
-
-
-if __name__ == "__main__":
-    ipcon = tinkerforge.ip_connection.IPConnection()
-
-    bricklets = PowerBoxBricklets(ipcon)
-    power_box = PowerBox(bricklets)
-
-    ipcon.connect("127.0.0.1", 4223)
-
-    power_box.initialize()
-
-    led = Led(LedLane.LANE_2, LedSide.FRONT)
-    chan = power_box._get_servo_channel_from_led(led)
-    power_box.set_led_max_current(led, Current.from_milli_amps(500))
-    print(power_box.bricklets.servo.get_pulse_width(chan))
-    power_box._set_led_pwm_from_intensity(led, 0.70)
-    print(power_box.bricklets.servo.get_position(chan))
-    power_box._enable_led_pwm(led)
-
-    raise RuntimeError()
