@@ -191,6 +191,9 @@ class PowerBox:
         self.io_panel = PowerBoxStatusLeds(bricklets.io)
         self.sensor_period_ms = sensor_period_ms
 
+        self.led_max_current = dict()
+        self.led_target_intensity = dict()
+
     def initialize(self) -> Self:
         self.io_panel.initialize()
         self.bricklets.io.register_callback(
@@ -235,20 +238,19 @@ class PowerBox:
         for bricklet_front, bricklet_back, lane in vc_bricklets_and_lanes:
             bricklet_front.register_callback(
                 BrickletVoltageCurrentV2.CALLBACK_CURRENT,
-                partial(self._callback_lane_current, LedSide.FRONT, lane),
+                partial(self._callback_lane_current, Led(lane, LedSide.FRONT)),
             )
             bricklet_back.register_callback(
                 BrickletVoltageCurrentV2.CALLBACK_CURRENT,
-                partial(self._callback_lane_current, LedSide.BACK, lane),
+                partial(self._callback_lane_current, Led(lane, LedSide.BACK)),
             )
-
             bricklet_front.register_callback(
                 BrickletVoltageCurrentV2.CALLBACK_VOLTAGE,
-                partial(self._callback_lane_voltage, LedSide.FRONT, lane),
+                partial(self._callback_lane_voltage, Led(lane, LedSide.FRONT)),
             )
             bricklet_back.register_callback(
                 BrickletVoltageCurrentV2.CALLBACK_VOLTAGE,
-                partial(self._callback_lane_voltage, LedSide.BACK, lane),
+                partial(self._callback_lane_voltage, Led(lane, LedSide.BACK)),
             )
 
             bricklet_front.set_current_callback_configuration(
@@ -297,7 +299,7 @@ class PowerBox:
 
         for led in Led.possible_leds():
             self._deactivate_led_power(led)
-            self._disable_led_pwm(led)
+            self._disable_led_pwm_controller(led)
 
         return self
 
@@ -343,67 +345,37 @@ class PowerBox:
             hundreth_celsius
         )
 
-    def _callback_lane_voltage(
-        self, side: LedSide, lane: int, voltage: int
-    ) -> None:
-        if lane == 1:
-            if side == LedSide.FRONT:
-                self.sensors.voltage_lane_1_front = Voltage.from_milli_volts(
-                    voltage
-                )
-            else:
-                self.sensors.voltage_lane_1_back = Voltage.from_milli_volts(
-                    voltage
-                )
-        elif lane == 2:
-            if side == LedSide.FRONT:
-                self.sensors.voltage_lane_2_front = Voltage.from_milli_volts(
-                    voltage
-                )
-            else:
-                self.sensors.voltage_lane_2_back = Voltage.from_milli_volts(
-                    voltage
-                )
-        elif lane == 3:
-            if side == LedSide.FRONT:
-                self.sensors.voltage_lane_3_front = Voltage.from_milli_volts(
-                    voltage
-                )
-            else:
-                self.sensors.voltage_lane_3_back = Voltage.from_milli_volts(
-                    voltage
-                )
+    def _callback_lane_voltage(self, led: Led, voltage: int) -> None:
+        s = self.sensors
+        match led:
+            case Led(LedLane.LANE_1, LedSide.FRONT):
+                s.voltage_lane_1_front = Voltage.from_milli_amps(voltage)
+            case Led(LedLane.LANE_1, LedSide.BACK):
+                s.voltage_lane_1_back = Voltage.from_milli_amps(voltage)
+            case Led(LedLane.LANE_2, LedSide.FRONT):
+                s.voltage_lane_2_front = Voltage.from_milli_amps(voltage)
+            case Led(LedLane.LANE_2, LedSide.BACK):
+                s.voltage_lane_2_back = Voltage.from_milli_amps(voltage)
+            case Led(LedLane.LANE_3, LedSide.FRONT):
+                s.voltage_lane_3_front = Voltage.from_milli_amps(voltage)
+            case Led(LedLane.LANE_3, LedSide.BACK):
+                s.voltage_lane_3_back = Voltage.from_milli_amps(voltage)
 
-    def _callback_lane_current(
-        self, side: LedSide, lane: int, current: int
-    ) -> None:
-        if lane == 1:
-            if side == LedSide.FRONT:
-                self.sensors.current_lane_1_front = Current.from_milli_amps(
-                    current
-                )
-            else:
-                self.sensors.current_lane_1_back = Current.from_milli_amps(
-                    current
-                )
-        elif lane == 2:
-            if side == LedSide.FRONT:
-                self.sensors.current_lane_2_front = Current.from_milli_amps(
-                    current
-                )
-            else:
-                self.sensors.current_lane_2_back = Current.from_milli_amps(
-                    current
-                )
-        elif lane == 3:
-            if side == LedSide.FRONT:
-                self.sensors.current_lane_3_front = Current.from_milli_amps(
-                    current
-                )
-            else:
-                self.sensors.current_lane_3_back = Current.from_milli_amps(
-                    current
-                )
+    def _callback_lane_current(self, led: Led, current: int) -> None:
+        s = self.sensors
+        match led:
+            case Led(LedLane.LANE_1, LedSide.FRONT):
+                s.current_lane_1_front = Current.from_milli_amps(current)
+            case Led(LedLane.LANE_1, LedSide.BACK):
+                s.current_lane_1_back = Current.from_milli_amps(current)
+            case Led(LedLane.LANE_2, LedSide.FRONT):
+                s.current_lane_2_front = Current.from_milli_amps(current)
+            case Led(LedLane.LANE_2, LedSide.BACK):
+                s.current_lane_2_back = Current.from_milli_amps(current)
+            case Led(LedLane.LANE_3, LedSide.FRONT):
+                s.current_lane_3_front = Current.from_milli_amps(current)
+            case Led(LedLane.LANE_3, LedSide.BACK):
+                s.current_lane_3_back = Current.from_milli_amps(current)
 
     def _callback_total_voltage(self, voltage: int) -> None:
         self.sensors.voltage_total = Voltage.from_milli_volts(voltage)
@@ -427,18 +399,6 @@ class PowerBox:
                 return self.bricklets.dual_relay_3b
         raise RuntimeError("Impossible LED!")
 
-    def _activate_led_power(self, led: Led) -> Self:
-        bricklet = self._get_led_relay(led)
-        bricklet.set_selected_value(0, True)
-        bricklet.set_selected_value(1, True)
-        return self
-
-    def _deactivate_led_power(self, led: Led) -> Self:
-        bricklet = self._get_led_relay(led)
-        bricklet.set_selected_value(1, False)
-        bricklet.set_selected_value(0, False)
-        return self
-
     def _get_servo_channel_from_led(self, led: Led) -> int:
         match led:
             case Led(LedLane.LANE_1, LedSide.FRONT):
@@ -455,20 +415,25 @@ class PowerBox:
                 return 9
         raise RuntimeError("Impossible LED!")
 
+    #
     def _get_servo_channels(self) -> Iterable[int]:
         return map(self._get_servo_channel_from_led, Led.possible_leds())
 
-    def set_led_max_current(self, led: Led, current: Current) -> Self:
-        assert 0.0 <= current.ampere <= 1.0
-        self.bricklets.servo.set_pulse_width(
-            self._get_servo_channel_from_led(led),
-            int(self._PWM_PERIOD_US * current.ampere),
-            self._PWM_PERIOD_US,
-        )
+    def _activate_led_power(self, led: Led) -> Self:
+        bricklet = self._get_led_relay(led)
+        bricklet.set_selected_value(0, True)
+        bricklet.set_selected_value(1, True)
+        return self
+
+    def _deactivate_led_power(self, led: Led) -> Self:
+        bricklet = self._get_led_relay(led)
+        bricklet.set_selected_value(1, False)
+        bricklet.set_selected_value(0, False)
         return self
 
     def _set_led_pwm_from_intensity(self, led: Led, intensity: float) -> Self:
         assert 0.0 <= intensity <= 1.0
+        assert led in self.led_max_current
         self.bricklets.servo.set_position(
             self._get_servo_channel_from_led(led),
             int(self._PWM_MAX_DGREE * (1 - intensity)),
@@ -476,16 +441,54 @@ class PowerBox:
         return self
 
     def _enable_led_pwm(self, led: Led) -> Self:
+        assert led in self.led_max_current
         self.bricklets.servo.set_enable(
             self._get_servo_channel_from_led(led), True
         )
         return self
 
-    def _disable_led_pwm(self, led: Led) -> Self:
+    def _disable_led_pwm_controller(self, led: Led) -> Self:
         self.bricklets.servo.set_enable(
             self._get_servo_channel_from_led(led), False
         )
         return self
+
+    def set_led_max_current(self, led: Led, current: Current) -> Self:
+        assert 0.0 <= current.ampere <= 1.0, "Max current is 1.0A."
+        self.led_max_current[led] = current
+
+        self.bricklets.servo.set_pulse_width(
+            self._get_servo_channel_from_led(led),
+            int(self._PWM_PERIOD_US * current.ampere),
+            self._PWM_PERIOD_US,
+        )
+        return self
+
+    def activate_led(self, led: Led, target_intensity: float) -> Self:
+        """Activates an led and starts feedback loop to keep its intensity
+        Expects a max-current to be set using set_led_max_current.
+        """
+        assert led in self.led_max_current
+        assert 0.0 <= target_intensity <= 1.0
+        self.led_target_intensity[led] = target_intensity
+
+        start_position_for_feedback_loop = target_intensity * 0.9
+        self._set_led_pwm_from_intensity(led, start_position_for_feedback_loop)
+        self._enable_led_pwm(led)
+        self._activate_led_power(led)
+
+        return self
+
+    def deactivate_led(self, led: Led) -> Self:
+        """Deactivates an led.
+        """
+        self.led_target_intensity.pop(led)
+        self._deactivate_led_power(led)
+        self._disable_led_pwm_controller(led)
+
+        return self
+    
+    # TODO: Feedback loop
 
 
 if __name__ == "__main__":
