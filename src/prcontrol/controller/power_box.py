@@ -71,59 +71,59 @@ class PowerBoxBricklets(BrickletManager):
 
 @attrs.define
 class PowerBoxSensorStates:
-    abmient_temperature: Temperature | None
-    voltage_total: Voltage | None
-    current_total: Current | None
-    voltage_lane_1_front: Voltage | None
-    voltage_lane_1_back: Voltage | None
-    voltage_lane_2_front: Voltage | None
-    voltage_lane_2_back: Voltage | None
-    voltage_lane_3_front: Voltage | None
-    voltage_lane_3_back: Voltage | None
-    current_lane_1_front: Current | None
-    current_lane_1_back: Current | None
-    current_lane_2_front: Current | None
-    current_lane_2_back: Current | None
-    current_lane_3_front: Current | None
-    current_lane_3_back: Current | None
+    abmient_temperature: Temperature
+    voltage_total: Voltage
+    current_total: Current
+    voltage_lane_1_front: Voltage
+    voltage_lane_1_back: Voltage
+    voltage_lane_2_front: Voltage
+    voltage_lane_2_back: Voltage
+    voltage_lane_3_front: Voltage
+    voltage_lane_3_back: Voltage
+    current_lane_1_front: Current
+    current_lane_1_back: Current
+    current_lane_2_front: Current
+    current_lane_2_back: Current
+    current_lane_3_front: Current
+    current_lane_3_back: Current
 
-    powerbox_closed: bool | None
-    reactorbox_closed: bool | None
-    led_installed_lane_1_front_and_vial: bool | None
-    led_installed_lane_1_back: bool | None
-    led_installed_lane_2_front_and_vial: bool | None
-    led_installed_lane_2_back: bool | None
-    led_installed_lane_3_front_and_vial: bool | None
-    led_installed_lane_3_back: bool | None
-    water_detected: bool | None
+    powerbox_closed: bool
+    reactorbox_closed: bool
+    led_installed_lane_1_front_and_vial: bool
+    led_installed_lane_1_back: bool
+    led_installed_lane_2_front_and_vial: bool
+    led_installed_lane_2_back: bool
+    led_installed_lane_3_front_and_vial: bool
+    led_installed_lane_3_back: bool
+    water_detected: bool
 
     @staticmethod
     def empty() -> "PowerBoxSensorStates":
         return PowerBoxSensorStates(
-            abmient_temperature=None,
-            voltage_total=None,
-            current_total=None,
-            voltage_lane_1_front=None,
-            voltage_lane_1_back=None,
-            voltage_lane_2_front=None,
-            voltage_lane_2_back=None,
-            voltage_lane_3_front=None,
-            voltage_lane_3_back=None,
-            current_lane_1_front=None,
-            current_lane_1_back=None,
-            current_lane_2_front=None,
-            current_lane_2_back=None,
-            current_lane_3_front=None,
-            current_lane_3_back=None,
-            powerbox_closed=None,
-            reactorbox_closed=None,
-            led_installed_lane_1_front_and_vial=None,
-            led_installed_lane_1_back=None,
-            led_installed_lane_2_front_and_vial=None,
-            led_installed_lane_2_back=None,
-            led_installed_lane_3_front_and_vial=None,
-            led_installed_lane_3_back=None,
-            water_detected=None,
+            abmient_temperature=Temperature.from_celsius(0),
+            voltage_total=Voltage.from_milli_volts(0),
+            current_total=Current.from_milli_amps(0),
+            voltage_lane_1_front=Voltage.from_milli_volts(0),
+            voltage_lane_1_back=Voltage.from_milli_volts(0),
+            voltage_lane_2_front=Voltage.from_milli_volts(0),
+            voltage_lane_2_back=Voltage.from_milli_volts(0),
+            voltage_lane_3_front=Voltage.from_milli_volts(0),
+            voltage_lane_3_back=Voltage.from_milli_volts(0),
+            current_lane_1_front=Current.from_milli_amps(0),
+            current_lane_1_back=Current.from_milli_amps(0),
+            current_lane_2_front=Current.from_milli_amps(0),
+            current_lane_2_back=Current.from_milli_amps(0),
+            current_lane_3_front=Current.from_milli_amps(0),
+            current_lane_3_back=Current.from_milli_amps(0),
+            powerbox_closed=False,
+            reactorbox_closed=False,
+            led_installed_lane_1_front_and_vial=False,
+            led_installed_lane_1_back=False,
+            led_installed_lane_2_front_and_vial=False,
+            led_installed_lane_2_back=False,
+            led_installed_lane_3_front_and_vial=False,
+            led_installed_lane_3_back=False,
+            water_detected=False,
         )
 
     def copy(self) -> Self:
@@ -199,6 +199,9 @@ class PowerBox:
         self.bricklets.io.register_callback(
             BrickletIO16V2.CALLBACK_INPUT_VALUE,
             self._callback_io16_single_input,
+        )
+        self._callback_io16_all_inputs(  # bootstrap values
+            [True] * 16, self.bricklets.io.get_value()
         )
         for channel in range(16):
             # We set value_has_to_change to True because
@@ -480,14 +483,13 @@ class PowerBox:
         return self
 
     def deactivate_led(self, led: Led) -> Self:
-        """Deactivates an led.
-        """
+        """Deactivates an led."""
         self.led_target_intensity.pop(led)
         self._deactivate_led_power(led)
         self._disable_led_pwm_controller(led)
 
         return self
-    
+
     # TODO: Feedback loop
 
 
