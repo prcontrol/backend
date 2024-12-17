@@ -217,22 +217,22 @@ class PowerBox:
         )
 
         vc_bricklets_and_lanes: list[
-            tuple[BrickletVoltageCurrentV2, BrickletVoltageCurrentV2, int]
+            tuple[BrickletVoltageCurrentV2, BrickletVoltageCurrentV2, LedLane]
         ] = [
             (
                 self.bricklets.voltage_current_1f,
                 self.bricklets.voltage_current_1b,
-                1,
+                LedLane.LANE_1,
             ),
             (
                 self.bricklets.voltage_current_2f,
                 self.bricklets.voltage_current_2b,
-                2,
+                LedLane.LANE_2,
             ),
             (
                 self.bricklets.voltage_current_3f,
                 self.bricklets.voltage_current_3b,
-                3,
+                LedLane.LANE_3,
             ),
         ]
         for bricklet_front, bricklet_back, lane in vc_bricklets_and_lanes:
@@ -349,17 +349,17 @@ class PowerBox:
         s = self.sensors
         match led:
             case Led(LedLane.LANE_1, LedSide.FRONT):
-                s.voltage_lane_1_front = Voltage.from_milli_amps(voltage)
+                s.voltage_lane_1_front = Voltage.from_milli_volts(voltage)
             case Led(LedLane.LANE_1, LedSide.BACK):
-                s.voltage_lane_1_back = Voltage.from_milli_amps(voltage)
+                s.voltage_lane_1_back = Voltage.from_milli_volts(voltage)
             case Led(LedLane.LANE_2, LedSide.FRONT):
-                s.voltage_lane_2_front = Voltage.from_milli_amps(voltage)
+                s.voltage_lane_2_front = Voltage.from_milli_volts(voltage)
             case Led(LedLane.LANE_2, LedSide.BACK):
-                s.voltage_lane_2_back = Voltage.from_milli_amps(voltage)
+                s.voltage_lane_2_back = Voltage.from_milli_volts(voltage)
             case Led(LedLane.LANE_3, LedSide.FRONT):
-                s.voltage_lane_3_front = Voltage.from_milli_amps(voltage)
+                s.voltage_lane_3_front = Voltage.from_milli_volts(voltage)
             case Led(LedLane.LANE_3, LedSide.BACK):
-                s.voltage_lane_3_back = Voltage.from_milli_amps(voltage)
+                s.voltage_lane_3_back = Voltage.from_milli_volts(voltage)
 
     def _callback_lane_current(self, led: Led, current: int) -> None:
         s = self.sensors
