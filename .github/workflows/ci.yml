@@ -3,25 +3,25 @@ name: Continous Integration
 on: [push, pull_request]
 
 jobs:
-    build:
+    ci_pipeline:
         runs-on: ubuntu-latest
         steps:
             - name: CheckOut to VM
               uses: actions/checkout@v3
 
-            - name: Login to GitHub Container Registry
-              uses: docker/login-action@v2
-              with:
-                registry: ghcr.io
-                username: ${{ github.actor }}
-                password: ${{ secrets.GITHUB_TOKEN }}
+            #- name: Login to GitHub Container Registry
+            #  uses: docker/login-action@v2
+            #  with:
+            #    registry: ghcr.io
+            #    username: ${{ github.actor }}
+            #    password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Build DevContainer
-              uses: devcontainers/ci@v0.3
-              with:
-                imageName: ghcr.io/prcontrol/backend-devcontainer
-                cacheFrom: ghcr.io/prcontrol/backend-devcontainer
-                push: never
+            #- name: Build DevContainer
+            #  uses: devcontainers/ci@v0.3
+            #  with:
+            #    imageName: ghcr.io/prcontrol/backend-devcontainer
+            #    cacheFrom: ghcr.io/prcontrol/backend-devcontainer
+            #    push: never
 
             - name: Run Linter
               uses: devcontainers/ci@v0.3
