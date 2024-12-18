@@ -103,7 +103,7 @@ def handle_config_api(
         try:
             uid = int(_uid)
         except ValueError:
-            return "uid must be integral", 400
+            return "uid must be integer", 400
 
         folder.delete(uid)
         return "success", 200
