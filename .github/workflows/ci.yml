@@ -3,7 +3,7 @@ name: Continous Integration
 on: [push, pull_request]
 
 jobs:
-    ci_pipeline:
+    linter:
         runs-on: ubuntu-latest
         steps:
             - name: CheckOut to VM
@@ -16,6 +16,11 @@ jobs:
                 runCmd: |
                     pdm sync
                     pdm check
+    type_checker:
+        runs-on: ubuntu-latest
+        steps:
+            - name: CheckOut to VM
+              uses: actions/checkout@v3
 
             - name: Run Type Checker
               uses: devcontainers/ci@v0.3
@@ -24,6 +29,11 @@ jobs:
                 runCmd: |
                     pdm sync
                     pdm mypy
+    tests:
+        runs-on: ubuntu-latest
+        steps:
+            - name: CheckOut to VM
+              uses: actions/checkout@v3
 
             - name: Run Tests
               uses: devcontainers/ci@v0.3
