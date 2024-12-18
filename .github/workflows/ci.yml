@@ -21,7 +21,7 @@ jobs:
               with:
                 imageName: ghcr.io/prcontrol/backend-devcontainer
                 cacheFrom: ghcr.io/prcontrol/backend-devcontainer
-                push: always
+                push: never
 
             - name: Run Linter
               uses: devcontainers/ci@v0.3
