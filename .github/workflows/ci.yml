@@ -9,25 +9,11 @@ jobs:
             - name: CheckOut to VM
               uses: actions/checkout@v3
 
-            #- name: Login to GitHub Container Registry
-            #  uses: docker/login-action@v2
-            #  with:
-            #    registry: ghcr.io
-            #    username: ${{ github.actor }}
-            #    password: ${{ secrets.GITHUB_TOKEN }}
-
-            #- name: Build DevContainer
-            #  uses: devcontainers/ci@v0.3
-            #  with:
-            #    imageName: ghcr.io/prcontrol/backend-devcontainer
-            #    cacheFrom: ghcr.io/prcontrol/backend-devcontainer
-            #    push: never
-
             - name: Run Linter
               uses: devcontainers/ci@v0.3
               with:
-                cacheFrom: ghcr.io/prcontrol/backend-devcontainer
-                push: never
+                #cacheFrom: ghcr.io/prcontrol/backend-devcontainer
+                #push: never
                 runCmd: |
                     pdm sync
                     pdm check
@@ -35,8 +21,8 @@ jobs:
             - name: Run Type Checker
               uses: devcontainers/ci@v0.3
               with:
-                cacheFrom: ghcr.io/prcontrol/backend-devcontainer
-                push: never
+                #cacheFrom: ghcr.io/prcontrol/backend-devcontainer
+                #push: never
                 runCmd: |
                     pdm sync
                     pdm mypy
@@ -44,8 +30,8 @@ jobs:
             - name: Run Tests
               uses: devcontainers/ci@v0.3
               with:
-                cacheFrom: ghcr.io/prcontrol/backend-devcontainer
-                push: never
+                #cacheFrom: ghcr.io/prcontrol/backend-devcontainer
+                #push: never
                 runCmd: |
                     pdm sync
                     pdm tests
