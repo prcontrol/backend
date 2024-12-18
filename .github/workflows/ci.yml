@@ -19,14 +19,14 @@ jobs:
             - name: Build DevContainer
               uses: devcontainers/ci@v0.3
               with:
-                imageName: ghcr.io/prControl/backend-devcontainer
-                cacheFrom: ghcr.io/prControl/backend-devcontainer
+                imageName: ghcr.io/prcontrol/backend-devcontainer
+                cacheFrom: ghcr.io/prcontrol/backend-devcontainer
                 push: always
 
             - name: Run Linter
               uses: devcontainers/ci@v0.3
               with:
-                cacheFrom: ghcr.io/prControl/backend-devcontainer
+                cacheFrom: ghcr.io/prcontrol/backend-devcontainer
                 push: never
                 runCmd: |
                     pdm sync
@@ -35,7 +35,7 @@ jobs:
             - name: Run Type Checker
               uses: devcontainers/ci@v0.3
               with:
-                cacheFrom: ghcr.io/prControl/backend-devcontainer
+                cacheFrom: ghcr.io/prcontrol/backend-devcontainer
                 push: never
                 runCmd: |
                     pdm sync
@@ -44,7 +44,7 @@ jobs:
             - name: Run Tests
               uses: devcontainers/ci@v0.3
               with:
-                cacheFrom: ghcr.io/prControl/backend-devcontainer
+                cacheFrom: ghcr.io/prcontrol/backend-devcontainer
                 push: never
                 runCmd: |
                     pdm sync
