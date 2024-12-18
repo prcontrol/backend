@@ -12,7 +12,7 @@ jobs:
             - name: Run Linter
               uses: devcontainers/ci@v0.3
               with:
-                imageName: ghcr.io/prcontrol/backend-devcontainer
+                #imageName: ghcr.io/prcontrol/backend-devcontainer
                 push: never
                 runCmd: |
                     pdm sync
@@ -21,7 +21,7 @@ jobs:
             - name: Run Type Checker
               uses: devcontainers/ci@v0.3
               with:
-                imageName: ghcr.io/prcontrol/backend-devcontainer
+                #imageName: ghcr.io/prcontrol/backend-devcontainer
                 push: never
                 runCmd: |
                     pdm sync
@@ -30,7 +30,7 @@ jobs:
             - name: Run Tests
               uses: devcontainers/ci@v0.3
               with:
-                imageName: ghcr.io/prcontrol/backend-devcontainer
+                #imageName: ghcr.io/prcontrol/backend-devcontainer
                 push: never
                 runCmd: |
                     pdm sync
