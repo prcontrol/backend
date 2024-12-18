@@ -12,8 +12,8 @@ jobs:
             - name: Run Linter
               uses: devcontainers/ci@v0.3
               with:
-                #cacheFrom: ghcr.io/prcontrol/backend-devcontainer
-                #push: never
+                imageName: ghcr.io/prcontrol/backend-devcontainer
+                push: never
                 runCmd: |
                     pdm sync
                     pdm check
@@ -21,8 +21,8 @@ jobs:
             - name: Run Type Checker
               uses: devcontainers/ci@v0.3
               with:
-                #cacheFrom: ghcr.io/prcontrol/backend-devcontainer
-                #push: never
+                imageName: ghcr.io/prcontrol/backend-devcontainer
+                push: never
                 runCmd: |
                     pdm sync
                     pdm mypy
@@ -30,8 +30,8 @@ jobs:
             - name: Run Tests
               uses: devcontainers/ci@v0.3
               with:
-                #cacheFrom: ghcr.io/prcontrol/backend-devcontainer
-                #push: never
+                imageName: ghcr.io/prcontrol/backend-devcontainer
+                push: never
                 runCmd: |
                     pdm sync
                     pdm tests
