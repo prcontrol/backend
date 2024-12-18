@@ -61,7 +61,7 @@ class Voltage:
         return Voltage(milli_volts=milli_volts)
 
     @property
-    def ampere(self) -> float:
+    def volts(self) -> float:
         return self.milli_volts / 1000.0
 
 
