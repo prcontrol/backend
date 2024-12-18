@@ -1,0 +1,51 @@
+name: Continous Integration
+
+on: [push, pull_request]
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: CheckOut to VM
+              uses: actions/checkout@v3
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v2
+              with:
+                registry: ghcr.io
+                username: ${{ github.repository_owner }}
+                password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build DevContainer
+              uses: devcontainers/ci@v0.3
+              with:
+                imageName: ghcr.io/prControl/backend-devcontainer
+                cacheFrom: ghcr.io/prControl/backend-devcontainer
+                push: always
+
+            - name: Run Linter
+              uses: devcontainers/ci@v0.3
+              with:
+                cacheFrom: ghcr.io/prControl/backend-devcontainer
+                push: never
+                runCmd: |
+                    pdm sync
+                    pdm check
+
+            - name: Run Type Checker
+              uses: devcontainers/ci@v0.3
+              with:
+                cacheFrom: ghcr.io/prControl/backend-devcontainer
+                push: never
+                runCmd: |
+                    pdm sync
+                    pdm mypy
+
+            - name: Run Tests
+              uses: devcontainers/ci@v0.3
+              with:
+                cacheFrom: ghcr.io/prControl/backend-devcontainer
+                push: never
+                runCmd: |
+                    pdm sync
+                    pdm tests
