@@ -53,8 +53,26 @@ class UvIndex:
 
 
 @frozen
-class Voltage: ...  # TODO
+class Voltage:
+    milli_volts: int = field(kw_only=True)
+
+    @staticmethod
+    def from_milli_volts(milli_volts: int) -> "Voltage":
+        return Voltage(milli_volts=milli_volts)
+
+    @property
+    def volts(self) -> float:
+        return self.milli_volts / 1000.0
 
 
 @frozen
-class Current: ...  # TODO
+class Current:
+    milli_amps: int = field(kw_only=True)
+
+    @staticmethod
+    def from_milli_amps(milli_ampts: int) -> "Current":
+        return Current(milli_amps=milli_ampts)
+
+    @property
+    def ampere(self) -> float:
+        return self.milli_amps / 1000.0

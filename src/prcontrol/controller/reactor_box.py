@@ -20,6 +20,7 @@ from prcontrol.controller.device import (
     bricklet,
 )
 from prcontrol.controller.measurements import Illuminance, Temperature, UvIndex
+from prcontrol.controller.power_box import LedLane
 
 
 class ReactorBoxBricklets(BrickletManager):
@@ -37,27 +38,34 @@ class ReactorBoxBricklets(BrickletManager):
 
 @attrs.define
 class ReactorBoxSensorState:
-    thermocouble_temp: Temperature | None
-    ambient_light: Illuminance | None
-    ambient_temperature: Temperature | None
-    lane_ir_temp: list[Temperature | None]
-    uv_index: UvIndex | None
-
-    lane_sample_taken: list[bool | None]
-    maintenance_mode: bool | None
-    photobox_cable_control: bool | None
+    thermocouble_temp: Temperature
+    ambient_light: Illuminance
+    ambient_temperature: Temperature
+    lane_1_ir_temp: Temperature
+    lane_2_ir_temp: Temperature
+    lane_3_ir_temp: Temperature
+    uv_index: UvIndex
+    lane_1_sample_taken: bool
+    lane_2_sample_taken: bool
+    lane_3_sample_taken: bool
+    maintenance_mode: bool
+    photobox_cable_control: bool
 
     @staticmethod
     def empty() -> "ReactorBoxSensorState":
         return ReactorBoxSensorState(
-            thermocouble_temp=None,
-            ambient_light=None,
-            ambient_temperature=None,
-            lane_ir_temp=[None, None, None],
-            uv_index=None,
-            lane_sample_taken=[None, None, None],
-            maintenance_mode=None,
-            photobox_cable_control=None,
+            thermocouble_temp=Temperature.from_celsius(0),
+            ambient_light=Illuminance.from_hundreth_lux(0),
+            ambient_temperature=Temperature.from_celsius(0),
+            lane_1_ir_temp=Temperature.from_celsius(0),
+            lane_2_ir_temp=Temperature.from_celsius(0),
+            lane_3_ir_temp=Temperature.from_celsius(0),
+            uv_index=UvIndex.from_tenth_uvi(0),
+            lane_1_sample_taken=False,
+            lane_2_sample_taken=False,
+            lane_3_sample_taken=False,
+            maintenance_mode=False,
+            photobox_cable_control=False,
         )
 
     def copy(self) -> Self:
@@ -144,6 +152,9 @@ class ReactorBox:
             BrickletIO16V2.CALLBACK_INPUT_VALUE,
             self._callback_io16_single_input,
         )
+        self._callback_io16_all_inputs(  # bootstrap values
+            [True] * 16, self.bricklets.io.get_value()
+        )
         for channel in range(16):
             # We set value_has_to_change to True because
             # we don'- want to log this kind of information
@@ -169,9 +180,9 @@ class ReactorBox:
         )
 
         for sensor, lane in (
-            (self.bricklets.lane_1_temp_ir, 0),
-            (self.bricklets.lane_2_temp_ir, 1),
-            (self.bricklets.lane_3_temp_ir, 2),
+            (self.bricklets.lane_1_temp_ir, LedLane.LANE_1),
+            (self.bricklets.lane_2_temp_ir, LedLane.LANE_2),
+            (self.bricklets.lane_3_temp_ir, LedLane.LANE_3),
         ):
             sensor.register_callback(
                 BrickletTemperatureIRV2.CALLBACK_OBJECT_TEMPERATURE,
@@ -214,11 +225,11 @@ class ReactorBox:
         value: bool,
     ) -> None:
         if channel == self.io_panel._CHAN_INPUT_SAMPLE_LANE_1:
-            self.sensors.lane_sample_taken[0] = value
+            self.sensors.lane_1_sample_taken = value
         elif channel == self.io_panel._CHAN_INPUT_SAMPLE_LANE_2:
-            self.sensors.lane_sample_taken[1] = value
+            self.sensors.lane_2_sample_taken = value
         elif channel == self.io_panel._CHAN_INPUT_SAMPLE_LANE_3:
-            self.sensors.lane_sample_taken[2] = value
+            self.sensors.lane_3_sample_taken = value
         elif channel == self.io_panel._CHAN_INPUT_MAINTENANCE_MODE:
             self.sensors.maintenance_mode = value
         elif channel == self.io_panel._CHAN_INPUT_PHOTOBOX_CABLE_CONTROL:
@@ -238,10 +249,21 @@ class ReactorBox:
             hundreth_celsius
         )
 
-    def _callback_temperature_ir(self, lane: int, tenth_celsius: int) -> None:
-        self.sensors.lane_ir_temp[lane] = Temperature.from_tenth_celsius(
-            tenth_celsius
-        )
+    def _callback_temperature_ir(
+        self, lane: LedLane, tenth_celsius: int
+    ) -> None:
+        if lane == LedLane.LANE_1:
+            self.sensors.lane_1_ir_temp = Temperature.from_tenth_celsius(
+                tenth_celsius
+            )
+        if lane == LedLane.LANE_2:
+            self.sensors.lane_2_ir_temp = Temperature.from_tenth_celsius(
+                tenth_celsius
+            )
+        if lane == LedLane.LANE_3:
+            self.sensors.lane_3_ir_temp = Temperature.from_tenth_celsius(
+                tenth_celsius
+            )
 
     def _callback_uv_light(self, tenth_uv_index: int) -> None:
         self.sensors.uv_index = UvIndex(tenth_uvi=tenth_uv_index)
