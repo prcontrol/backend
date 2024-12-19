@@ -5,8 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-
-content_hash = "sha256:f6d2ce03819b2d1441660046699924e003f3ef5ce183e27b58a3eb9603d60bee"
+content_hash = "sha256:9fd935ea09408460f86e72b6834ebe726aef2c2c40df3427d54fe9e7f70788ab"
 
 [[metadata.targets]]
 requires_python = ">=3.12"
@@ -23,6 +22,17 @@ dependencies = [
 files = [
     {file = "attrs-24.2.0-py3-none-any.whl", hash = "sha256:81921eb96de3191c8258c199618104dd27ac608d9366f5e35d011eae1867ede2"},
     {file = "attrs-24.2.0.tar.gz", hash = "sha256:5cfb1b9148b5b086569baec03f20d7b6bf3bcacc9a42bebf87ffaaca362f6346"},
+]
+
+[[package]]
+name = "bidict"
+version = "0.23.1"
+requires_python = ">=3.8"
+summary = "The bidirectional mapping library for Python."
+groups = ["default"]
+files = [
+    {file = "bidict-0.23.1-py3-none-any.whl", hash = "sha256:5dae8d4d79b552a71cbabc7deb25dfe8ce710b17ff41711e13010ead2abfc3e5"},
+    {file = "bidict-0.23.1.tar.gz", hash = "sha256:03069d763bc387bbd20e7d49914e75fc4132a41937fa3405417e1a5a2d006d71"},
 ]
 
 [[package]]
@@ -141,6 +151,35 @@ dependencies = [
 files = [
     {file = "Flask_Cors-5.0.0-py2.py3-none-any.whl", hash = "sha256:b9e307d082a9261c100d8fb0ba909eec6a228ed1b60a8315fd85f783d61910bc"},
     {file = "flask_cors-5.0.0.tar.gz", hash = "sha256:5aadb4b950c4e93745034594d9f3ea6591f734bb3662e16e255ffbf5e89c88ef"},
+]
+
+[[package]]
+name = "flask-socketio"
+version = "5.4.1"
+requires_python = ">=3.6"
+summary = "Socket.IO integration for Flask applications"
+groups = ["default"]
+dependencies = [
+    "Flask>=0.9",
+    "python-socketio>=5.0.2",
+]
+files = [
+    {file = "Flask_SocketIO-5.4.1-py3-none-any.whl", hash = "sha256:895da879d162781b9193cbb8fe8f3cf25b263ff242980d5c5e6c16d3c03930d2"},
+    {file = "flask_socketio-5.4.1.tar.gz", hash = "sha256:2e9b8864a5be37ca54f6c76a4d06b1ac5e0df61fde12d03afc81ab4057e1eb86"},
+]
+
+[[package]]
+name = "h11"
+version = "0.14.0"
+requires_python = ">=3.7"
+summary = "A pure-Python, bring-your-own-I/O implementation of HTTP/1.1"
+groups = ["default"]
+dependencies = [
+    "typing-extensions; python_version < \"3.8\"",
+]
+files = [
+    {file = "h11-0.14.0-py3-none-any.whl", hash = "sha256:e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761"},
+    {file = "h11-0.14.0.tar.gz", hash = "sha256:8f19fbbe99e72420ff35c00b27a34cb9937e902a8b810e2c88300c6f0a3b699d"},
 ]
 
 [[package]]
@@ -349,6 +388,35 @@ files = [
 ]
 
 [[package]]
+name = "python-engineio"
+version = "4.10.1"
+requires_python = ">=3.6"
+summary = "Engine.IO server and client for Python"
+groups = ["default"]
+dependencies = [
+    "simple-websocket>=0.10.0",
+]
+files = [
+    {file = "python_engineio-4.10.1-py3-none-any.whl", hash = "sha256:445a94004ec8034960ab99e7ce4209ec619c6e6b6a12aedcb05abeab924025c0"},
+    {file = "python_engineio-4.10.1.tar.gz", hash = "sha256:166cea8dd7429638c5c4e3a4895beae95196e860bc6f29ed0b9fe753d1ef2072"},
+]
+
+[[package]]
+name = "python-socketio"
+version = "5.11.4"
+requires_python = ">=3.8"
+summary = "Socket.IO server and client for Python"
+groups = ["default"]
+dependencies = [
+    "bidict>=0.21.0",
+    "python-engineio>=4.8.0",
+]
+files = [
+    {file = "python_socketio-5.11.4-py3-none-any.whl", hash = "sha256:42efaa3e3e0b166fc72a527488a13caaac2cefc76174252486503bd496284945"},
+    {file = "python_socketio-5.11.4.tar.gz", hash = "sha256:8b0b8ff2964b2957c865835e936310190639c00310a47d77321a594d1665355e"},
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.2"
 requires_python = ">=3.8"
@@ -404,6 +472,20 @@ files = [
 ]
 
 [[package]]
+name = "simple-websocket"
+version = "1.1.0"
+requires_python = ">=3.6"
+summary = "Simple WebSocket server and client for Python"
+groups = ["default"]
+dependencies = [
+    "wsproto",
+]
+files = [
+    {file = "simple_websocket-1.1.0-py3-none-any.whl", hash = "sha256:4af6069630a38ed6c561010f0e11a5bc0d4ca569b36306eb257cd9a192497c8c"},
+    {file = "simple_websocket-1.1.0.tar.gz", hash = "sha256:7939234e7aa067c534abdab3a9ed933ec9ce4691b0713c78acb195560aa52ae4"},
+]
+
+[[package]]
 name = "tinkerforge"
 version = "2.1.31"
 summary = "Python API Bindings for Tinkerforge Bricks and Bricklets"
@@ -424,6 +506,20 @@ dependencies = [
 files = [
     {file = "types-Flask-Cors-5.0.0.20240902.tar.gz", hash = "sha256:8921b273bf7cd9636df136b66408efcfa6338a935e5c8f53f5eff1cee03f3394"},
     {file = "types_Flask_Cors-5.0.0.20240902-py3-none-any.whl", hash = "sha256:595e5f36056cd128ab905832e055f2e5d116fbdc685356eea4490bc77df82137"},
+]
+
+[[package]]
+name = "types-flask-socketio"
+version = "5.4.0.20241002"
+requires_python = ">=3.8"
+summary = "Typing stubs for Flask-SocketIO"
+groups = ["default"]
+dependencies = [
+    "Flask>=0.9",
+]
+files = [
+    {file = "types-Flask-SocketIO-5.4.0.20241002.tar.gz", hash = "sha256:ad1f5b20404f1f1739b6a7895c3424bf751a3f1be201dadd7df7ec9b1abff218"},
+    {file = "types_Flask_SocketIO-5.4.0.20241002-py3-none-any.whl", hash = "sha256:9dc36d4bbd95cef8086a07a6b416255f1fd068206ba57aebc418a43a9bacae4c"},
 ]
 
 [[package]]
@@ -466,4 +562,18 @@ dependencies = [
 files = [
     {file = "werkzeug-3.1.3-py3-none-any.whl", hash = "sha256:54b78bf3716d19a65be4fceccc0d1d7b89e608834989dfae50ea87564639213e"},
     {file = "werkzeug-3.1.3.tar.gz", hash = "sha256:60723ce945c19328679790e3282cc758aa4a6040e4bb330f53d30fa546d44746"},
+]
+
+[[package]]
+name = "wsproto"
+version = "1.2.0"
+requires_python = ">=3.7.0"
+summary = "WebSockets state-machine based protocol implementation"
+groups = ["default"]
+dependencies = [
+    "h11<1,>=0.9.0",
+]
+files = [
+    {file = "wsproto-1.2.0-py3-none-any.whl", hash = "sha256:b9acddd652b585d75b20477888c56642fdade28bdfd3579aa24a4d2c037dd736"},
+    {file = "wsproto-1.2.0.tar.gz", hash = "sha256:ad565f26ecb92588a3e43bc3d96164de84cd9902482b130d0ddbaa9664a85065"},
 ]
