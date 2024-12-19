@@ -43,7 +43,7 @@ def client():
 
 
 @pytest.fixture
-def create_clean_environment():
+def clean_environment():
     test_dir = config_manager.leds
     clean_directory(test_dir.workspace)
     yield test_dir
@@ -62,8 +62,8 @@ def test_availability(client):
     assert b"<h1> Hello World! </h1>" in response.data
 
 
-def test_list_api(client, create_clean_environment):
-    init_dir_with_n_leds(2, create_clean_environment)
+def test_list_api(client, clean_environment):
+    init_dir_with_n_leds(2, clean_environment)
     response = client.get("/list_led")
     assert response.status_code == 200
     return_obj = json.loads(response.data)
@@ -71,21 +71,21 @@ def test_list_api(client, create_clean_environment):
     assert return_obj["results"][0]["uid"] == 0
     assert (
         return_obj["results"][0]["description"]
-        == create_clean_environment.load(0).get_description()
+        == clean_environment.load(0).get_description()
     )
     assert return_obj["results"][1]["uid"] == 1
     assert (
         return_obj["results"][1]["description"]
-        == create_clean_environment.load(1).get_description()
+        == clean_environment.load(1).get_description()
     )
 
 
-def test_config_api_GET_normal(client, create_clean_environment):
-    init_dir_with_n_leds(1, create_clean_environment)
+def test_config_api_GET_normal(client, clean_environment):
+    init_dir_with_n_leds(1, clean_environment)
     response = client.get("/led", query_string=dict(uid=0))
     assert response.status_code == 200
     rec_obj = LED.from_json(response.data)
-    assert rec_obj == create_clean_environment.load(0)
+    assert rec_obj == clean_environment.load(0)
 
 
 def test_config_api_GET_no_uid(client):
@@ -100,19 +100,19 @@ def test_config_api_GET_uid_as_str(client):
     assert response.data == b"uid must be integer"
 
 
-def test_config_api_GET_no_file(client, create_clean_environment):
-    init_dir_with_n_leds(3, create_clean_environment)
+def test_config_api_GET_no_file(client, clean_environment):
+    init_dir_with_n_leds(3, clean_environment)
     response = client.get("/led", query_string=dict(uid=40))
     assert response.status_code == 400
     assert response.data == b"file does not exist"
 
 
-def test_config_api_POST_new_file(client, create_clean_environment):
+def test_config_api_POST_new_file(client, clean_environment):
     obj = create_mock_led(0, "test")
     data = {"json_file": (io.BytesIO(obj.to_json().encode()), "test.json")}
     response = client.post("/led", data=data)
     assert response.status_code == 200
-    assert obj == create_clean_environment.load(0)
+    assert obj == clean_environment.load(0)
 
 
 def test_config_api_POST_no_file(client):
@@ -123,18 +123,18 @@ def test_config_api_POST_no_file(client):
     assert response.data == b"post expects a json_file"
 
 
-def test_config_api_DELETE_normal(client, create_clean_environment):
-    init_dir_with_n_leds(10, create_clean_environment)
+def test_config_api_DELETE_normal(client, clean_environment):
+    init_dir_with_n_leds(10, clean_environment)
     response = client.delete("/led", query_string=dict(uid=5))
     assert response.status_code == 200
-    assert len(create_clean_environment._configs) == 9
+    assert len(clean_environment._configs) == 9
 
 
-def test_config_api_DELETE_no_file(client, create_clean_environment):
-    init_dir_with_n_leds(10, create_clean_environment)
+def test_config_api_DELETE_no_file(client, clean_environment):
+    init_dir_with_n_leds(10, clean_environment)
     response = client.delete("/led", query_string=dict(uid=42))
     assert response.status_code == 200
-    assert len(create_clean_environment._configs) == 10
+    assert len(clean_environment._configs) == 10
 
 
 def test_config_api_DELETE_no_uid(client):
