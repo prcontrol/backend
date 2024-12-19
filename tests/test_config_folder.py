@@ -1,4 +1,5 @@
 import os
+import pathlib
 import shutil
 
 import attrs
@@ -20,9 +21,11 @@ class MyConfigTestObject(ConfigObject):
         return self.name
 
 
-def clean(dir: str):
-    if os.path.isdir("./test/"):
-        shutil.rmtree("./test/")
+def clean_directory(dir: str):
+    dir = pathlib.Path(dir)
+    if os.path.isdir(dir):
+        shutil.rmtree(dir)
+    os.mkdir(dir)
 
 
 def init_test_folder(
@@ -40,9 +43,9 @@ def init_test_folder(
 @pytest.fixture
 def dir_path():
     dir_path = "./test/"
-    clean(dir_path)
+    clean_directory(dir_path)
     yield dir_path
-    clean(dir_path)
+    clean_directory(dir_path)
 
 
 def test_creation_of_new_folder(dir_path):
