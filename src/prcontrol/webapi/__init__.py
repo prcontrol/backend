@@ -1,3 +1,3 @@
-__all__ = ["app", "config_manager"]
+__all__ = ["app"]
 
-from prcontrol.webapi.api import app, config_manager
+from prcontrol.webapi.api import app

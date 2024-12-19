@@ -76,7 +76,7 @@ def handle_config_api(
             file = request.files["json_file"]
             folder.add_from_json(file.stream.read())
             return "success", 200
-        except Exception:
+        except KeyError:
             return "post expects a json_file", 400
 
     elif request.method == "GET":

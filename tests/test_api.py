@@ -8,7 +8,7 @@ from prcontrol.controller.configuration import (
     LED,
     EmmissionPair,
 )
-from prcontrol.webapi import app, config_manager
+from prcontrol.webapi.api import app, config_manager
 from tests.test_config_folder import clean
 
 
@@ -71,11 +71,11 @@ def test_list_api(client, dir):
     assert return_obj["results"][0]["uid"] == 0
     assert (
         return_obj["results"][0]["description"] == dir.load(0).get_description()
-    )  # noqa: E501
+    )
     assert return_obj["results"][1]["uid"] == 1
     assert (
         return_obj["results"][1]["description"] == dir.load(1).get_description()
-    )  # noqa: E501
+    )
 
 
 def test_config_api_GET_normal(client, dir):
