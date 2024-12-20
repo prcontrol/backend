@@ -140,7 +140,7 @@ def handle_list_api(
 
 @frozen
 class ReactorBoxWsData(JSONSeriablizable):
-    thermocouble_temp: float
+    thermocouple_temp: float
     ambient_light: float
     ambient_temperature: float
     lane_1_ir_temp: float
@@ -230,7 +230,7 @@ class PowerBoxWsData(JSONSeriablizable):
 
 
 @frozen
-class StateWsData:
+class StateWsData(JSONSeriablizable):
     reactor_box: ReactorBoxWsData
     power_box: PowerBoxWsData
 
@@ -263,11 +263,12 @@ def send_data() -> None:
             1234
         )  # example value
 
+        print("Sending")
         socketio.emit(
             "pcrdata",
-            {"data": StateWsData.from_sensor_states(data_r, data_p)},
+            {"data": StateWsData.from_sensor_states(data_r, data_p).to_json()},
         )
-        socketio.sleep(0)
+        socketio.sleep(1)
 
 
 """Flask-SocketIO socketio.start_background_task() und socketio.sleep()
