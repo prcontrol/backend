@@ -1,5 +1,6 @@
 import json
 from typing import Any
+from xmlrpc.client import Boolean
 
 from attrs import frozen
 from flask import Flask, Request, request
@@ -9,7 +10,7 @@ from flask_socketio import SocketIO
 
 from prcontrol.controller.config_manager import ConfigFolder, ConfigManager
 from prcontrol.controller.configuration import JSONSeriablizable
-from prcontrol.controller.measurements import Illuminance
+from prcontrol.controller.measurements import Current, Illuminance, Temperature
 from prcontrol.controller.power_box import PowerBoxSensorStates
 from prcontrol.controller.reactor_box import ReactorBoxSensorState
 
@@ -259,11 +260,11 @@ def send_data() -> None:
     while True:
         data_r = ReactorBoxSensorState.empty()
         data_p = PowerBoxSensorStates.empty()
-        data_r.ambient_light = Illuminance.from_hundreth_lux(
-            1234
-        )  # example value
 
-        print("Sending")
+        #set example values for testing
+        data_r.ambient_temperature = Temperature.from_celsius(20)
+        data_p.current_total = Current.from_milli_amps(2222)
+
         socketio.emit(
             "pcrdata",
             {"data": StateWsData.from_sensor_states(data_r, data_p).to_json()},
@@ -271,5 +272,5 @@ def send_data() -> None:
         socketio.sleep(1)
 
 
-"""Flask-SocketIO socketio.start_background_task() und socketio.sleep()
-   blockieren den Event-Loop nicht """
+#Flask-SocketIO socketio.start_background_task() and socketio.sleep()
+#do not block the event-loop
