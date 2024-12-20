@@ -1,6 +1,5 @@
 import json
 from typing import Any
-from xmlrpc.client import Boolean
 
 from attrs import frozen
 from flask import Flask, Request, request
@@ -10,7 +9,7 @@ from flask_socketio import SocketIO
 
 from prcontrol.controller.config_manager import ConfigFolder, ConfigManager
 from prcontrol.controller.configuration import JSONSeriablizable
-from prcontrol.controller.measurements import Current, Illuminance, Temperature
+from prcontrol.controller.measurements import Current, Temperature
 from prcontrol.controller.power_box import PowerBoxSensorStates
 from prcontrol.controller.reactor_box import ReactorBoxSensorState
 
