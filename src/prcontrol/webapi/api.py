@@ -260,7 +260,7 @@ def send_data() -> None:
         data_r = ReactorBoxSensorState.empty()
         data_p = PowerBoxSensorStates.empty()
 
-        #set example values for testing
+        # set example values for testing
         data_r.ambient_temperature = Temperature.from_celsius(20)
         data_p.current_total = Current.from_milli_amps(2222)
 
@@ -269,7 +269,3 @@ def send_data() -> None:
             {"data": StateWsData.from_sensor_states(data_r, data_p).to_json()},
         )
         socketio.sleep(1)
-
-
-#Flask-SocketIO socketio.start_background_task() and socketio.sleep()
-#do not block the event-loop
