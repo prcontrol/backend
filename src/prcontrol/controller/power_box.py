@@ -140,7 +140,7 @@ class PowerBoxStatusLeds(StatusLeds):
     _CHAN_INPUT_LED_INSTALLED_LANE_3_BACK = 7
     _CHAN_INPUT_WATER_DETECTED = 9
 
-    _CHAN_LED_WARNING_TEMP_AMIBENT = 8
+    _CHAN_LED_WARNING_TEMP_AMBIENT = 8
     _CHAN_LED_MAINTENANCE_ACTIVE = 10
     _CHAN_LED_CONNECTED = 11
     _CHAN_LED_WARNING_VOLTAGE = 12
@@ -148,7 +148,7 @@ class PowerBoxStatusLeds(StatusLeds):
     _CHAN_LED_BOXES_CLOSED = 14
     _CHAN_LED_CABLE_CONTROL = 15
 
-    led_warning_temp_amibent = StatusLeds.led(_CHAN_LED_WARNING_TEMP_AMIBENT)
+    led_warning_temp_ambient = StatusLeds.led(_CHAN_LED_WARNING_TEMP_AMBIENT)
     led_maintenance_active = StatusLeds.led(_CHAN_LED_MAINTENANCE_ACTIVE)
     led_connected = StatusLeds.led(_CHAN_LED_CONNECTED)
     led_warning_voltage = StatusLeds.led(_CHAN_LED_WARNING_VOLTAGE)
@@ -158,7 +158,7 @@ class PowerBoxStatusLeds(StatusLeds):
 
     def is_output_channel(self, channel: int) -> bool:
         return channel in {
-            self._CHAN_LED_WARNING_TEMP_AMIBENT,
+            self._CHAN_LED_WARNING_TEMP_AMBIENT,
             self._CHAN_LED_MAINTENANCE_ACTIVE,
             self._CHAN_LED_CONNECTED,
             self._CHAN_LED_WARNING_VOLTAGE,
