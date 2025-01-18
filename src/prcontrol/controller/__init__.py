@@ -17,7 +17,7 @@ __all__ = [
     #
     "PowerBox",
     "PowerBoxBricklets",
-    "PowerBoxSensorStates",
+    "PowerBoxSensorState",
     "PowerBoxStatusLeds",
     #
     "ReactorBox",
@@ -49,7 +49,7 @@ from prcontrol.controller.device import (
 from prcontrol.controller.power_box import (
     PowerBox,
     PowerBoxBricklets,
-    PowerBoxSensorStates,
+    PowerBoxSensorState,
     PowerBoxStatusLeds,
 )
 from prcontrol.controller.reactor_box import (

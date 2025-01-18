@@ -15,12 +15,15 @@ from tinkerforge.bricklet_uv_light_v2 import BrickletUVLightV2
 
 from prcontrol.controller.device import (
     BrickletManager,
+    LedLane,
     LedState,
+    SensorObserver,
     StatusLeds,
     bricklet,
+    callable_field,
+    sensor_observer_callback_dispatcher,
 )
 from prcontrol.controller.measurements import Illuminance, Temperature, UvIndex
-from prcontrol.controller.power_box import LedLane
 
 
 class ReactorBoxBricklets(BrickletManager):
@@ -36,7 +39,7 @@ class ReactorBoxBricklets(BrickletManager):
     # fmt: on
 
 
-@attrs.define
+@attrs.define(on_setattr=sensor_observer_callback_dispatcher)
 class ReactorBoxSensorState:
     thermocouble_temp: Temperature
     ambient_light: Illuminance
@@ -49,7 +52,9 @@ class ReactorBoxSensorState:
     lane_2_sample_taken: bool
     lane_3_sample_taken: bool
     maintenance_mode: bool
-    photobox_cable_control: bool
+    cable_control: bool
+
+    callback: SensorObserver[Self] = callable_field()
 
     @staticmethod
     def empty() -> "ReactorBoxSensorState":
@@ -65,7 +70,7 @@ class ReactorBoxSensorState:
             lane_2_sample_taken=False,
             lane_3_sample_taken=False,
             maintenance_mode=False,
-            photobox_cable_control=False,
+            cable_control=False,
         )
 
     def copy(self) -> Self:
@@ -89,7 +94,7 @@ class ReactorBoxStatusLeds(StatusLeds):
     _CHAN_INPUT_SAMPLE_LANE_2 = 1
     _CHAN_INPUT_SAMPLE_LANE_3 = 2
     _CHAN_INPUT_MAINTENANCE_MODE = 14
-    _CHAN_INPUT_PHOTOBOX_CABLE_CONTROL = 15
+    _CHAN_INPUT_CABLE_CONTROL = 15
 
     def is_output_channel(self, channel: int) -> bool:
         return channel in {
@@ -127,13 +132,16 @@ class ReactorBox:
     io_panel: ReactorBoxStatusLeds
 
     def __init__(
-        self, bricklets: ReactorBoxBricklets, sensor_period_ms: int = 200
+        self,
+        bricklets: ReactorBoxBricklets,
+        sensor_callback: SensorObserver[ReactorBoxSensorState],
+        sensor_period_ms: int = 200,
     ):
         self.bricklets = bricklets
-        self.sensor_period_ms = sensor_period_ms
-
         self.sensors = ReactorBoxSensorState.empty()
+        self.sensors.callback = sensor_callback
         self.io_panel = ReactorBoxStatusLeds(bricklets.io)
+        self.sensor_period_ms = sensor_period_ms
 
     def initialize(self) -> Self:
         """Register the callbacks and set i/o direction."""
@@ -232,8 +240,8 @@ class ReactorBox:
             self.sensors.lane_3_sample_taken = value
         elif channel == self.io_panel._CHAN_INPUT_MAINTENANCE_MODE:
             self.sensors.maintenance_mode = value
-        elif channel == self.io_panel._CHAN_INPUT_PHOTOBOX_CABLE_CONTROL:
-            self.sensors.photobox_cable_control = value
+        elif channel == self.io_panel._CHAN_INPUT_CABLE_CONTROL:
+            self.sensors.cable_control = value
 
     def _callback_io16_all_inputs(
         self, changes: list[bool], vals: list[bool]
