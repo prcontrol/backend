@@ -13,7 +13,7 @@ from tinkerforge.bricklet_temperature_v2 import BrickletTemperatureV2
 from tinkerforge.bricklet_thermocouple_v2 import BrickletThermocoupleV2
 from tinkerforge.bricklet_uv_light_v2 import BrickletUVLightV2
 
-from prcontrol.controller.device import (
+from prcontrol.controller.common import (
     BrickletManager,
     LedLane,
     LedState,

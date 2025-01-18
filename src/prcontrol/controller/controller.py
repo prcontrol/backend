@@ -11,7 +11,7 @@ import attrs
 from attrs import define, field, frozen, setters
 from tinkerforge.ip_connection import IPConnection
 
-from prcontrol.controller.device import LedLane, LedPosition, LedSide, LedState
+from prcontrol.controller.common import LedLane, LedPosition, LedSide, LedState
 from prcontrol.controller.measurements import Temperature, UvIndex, Voltage
 from prcontrol.controller.power_box import (
     CaseLidState,

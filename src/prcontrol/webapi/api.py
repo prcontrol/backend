@@ -9,8 +9,11 @@ from flask_socketio import SocketIO
 
 from prcontrol.controller.config_manager import ConfigFolder, ConfigManager
 from prcontrol.controller.configuration import JSONSeriablizable
-from prcontrol.controller.measurements import Current, Temperature
-from prcontrol.controller.power_box import PowerBoxSensorStates
+from prcontrol.controller.measurements import (
+    Current,
+    Temperature,
+)
+from prcontrol.controller.power_box import CaseLidState, PowerBoxSensorState
 from prcontrol.controller.reactor_box import ReactorBoxSensorState
 
 app = Flask(__name__)
@@ -151,7 +154,7 @@ class ReactorBoxWsData(JSONSeriablizable):
     lane_2_sample_taken: bool
     lane_3_sample_taken: bool
     maintenance_mode: bool
-    photobox_cable_control: bool
+    cable_control: bool
 
     @staticmethod
     def from_state(state: ReactorBoxSensorState) -> "ReactorBoxWsData":
@@ -167,7 +170,7 @@ class ReactorBoxWsData(JSONSeriablizable):
             lane_2_sample_taken=state.lane_2_sample_taken,
             lane_3_sample_taken=state.lane_3_sample_taken,
             maintenance_mode=state.maintenance_mode,
-            photobox_cable_control=state.photobox_cable_control,
+            cable_control=state.cable_control,
         )
 
 
@@ -188,7 +191,6 @@ class PowerBoxWsData(JSONSeriablizable):
     current_lane_2_back: float
     current_lane_3_front: float
     current_lane_3_back: float
-
     powerbox_closed: bool
     reactorbox_closed: bool
     led_installed_lane_1_front_and_vial: bool
@@ -198,9 +200,10 @@ class PowerBoxWsData(JSONSeriablizable):
     led_installed_lane_3_front_and_vial: bool
     led_installed_lane_3_back: bool
     water_detected: bool
+    cable_control: bool
 
     @staticmethod
-    def from_state(state: PowerBoxSensorStates) -> "PowerBoxWsData":
+    def from_state(state: PowerBoxSensorState) -> "PowerBoxWsData":
         return PowerBoxWsData(
             abmient_temperature=state.abmient_temperature.celsius,
             voltage_total=state.voltage_total.volts,
@@ -217,8 +220,8 @@ class PowerBoxWsData(JSONSeriablizable):
             current_lane_2_back=state.current_lane_2_back.ampere,
             current_lane_3_front=state.current_lane_3_front.ampere,
             current_lane_3_back=state.current_lane_3_back.ampere,
-            powerbox_closed=state.powerbox_closed,
-            reactorbox_closed=state.reactorbox_closed,
+            powerbox_closed=state.powerbox_lid == CaseLidState.CLOSED,
+            reactorbox_closed=state.reactorbox_lid == CaseLidState.CLOSED,
             led_installed_lane_1_front_and_vial=state.led_installed_lane_1_front_and_vial,
             led_installed_lane_1_back=state.led_installed_lane_1_back,
             led_installed_lane_2_front_and_vial=state.led_installed_lane_2_front_and_vial,
@@ -226,6 +229,7 @@ class PowerBoxWsData(JSONSeriablizable):
             led_installed_lane_3_front_and_vial=state.led_installed_lane_3_front_and_vial,
             led_installed_lane_3_back=state.led_installed_lane_3_back,
             water_detected=state.water_detected,
+            cable_control=state.cable_control,
         )
 
 
@@ -236,7 +240,7 @@ class StateWsData(JSONSeriablizable):
 
     @staticmethod
     def from_sensor_states(
-        state_reactor: ReactorBoxSensorState, state_power: PowerBoxSensorStates
+        state_reactor: ReactorBoxSensorState, state_power: PowerBoxSensorState
     ) -> "StateWsData":
         return StateWsData(
             reactor_box=ReactorBoxWsData.from_state(state_reactor),
@@ -258,7 +262,7 @@ def handle_disconnect() -> None:
 def send_data() -> None:
     while True:
         data_r = ReactorBoxSensorState.empty()
-        data_p = PowerBoxSensorStates.empty()
+        data_p = PowerBoxSensorState.empty()
 
         # set example values for testing
         data_r.ambient_temperature = Temperature.from_celsius(20)

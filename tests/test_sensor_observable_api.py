@@ -2,7 +2,7 @@ from typing import Self
 
 import attrs
 
-from prcontrol.controller.device import (
+from prcontrol.controller.common import (
     SensorObserver,
     sensor_observer_callback_dispatcher,
 )

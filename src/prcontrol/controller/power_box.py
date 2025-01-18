@@ -16,7 +16,7 @@ from tinkerforge.bricklet_servo_v2 import BrickletServoV2
 from tinkerforge.bricklet_temperature_v2 import BrickletTemperatureV2
 from tinkerforge.bricklet_voltage_current_v2 import BrickletVoltageCurrentV2
 
-from prcontrol.controller.device import (
+from prcontrol.controller.common import (
     BrickletManager,
     LedLane,
     LedPosition,

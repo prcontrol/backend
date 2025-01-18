@@ -269,4 +269,7 @@ def callable_field() -> Any:
         default=None,
         on_setattr=attrs.setters.NO_OP,
         eq=False,
+        repr=False,
+        order=False,
+        hash=False,
     )
