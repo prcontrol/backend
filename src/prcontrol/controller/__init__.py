@@ -17,7 +17,7 @@ __all__ = [
     #
     "PowerBox",
     "PowerBoxBricklets",
-    "PowerBoxSensorStates",
+    "PowerBoxSensorState",
     "PowerBoxStatusLeds",
     #
     "ReactorBox",
@@ -29,6 +29,10 @@ __all__ = [
 ]
 
 import prcontrol.controller.measurements as units
+from prcontrol.controller.common import (
+    LedState,
+    establish_connection,
+)
 from prcontrol.controller.configuration import (
     LED,
     ConfigObject,
@@ -42,14 +46,10 @@ from prcontrol.controller.configuration import (
     TinkerforgeBricklet,
 )
 from prcontrol.controller.controller import Controller
-from prcontrol.controller.device import (
-    LedState,
-    establish_connection,
-)
 from prcontrol.controller.power_box import (
     PowerBox,
     PowerBoxBricklets,
-    PowerBoxSensorStates,
+    PowerBoxSensorState,
     PowerBoxStatusLeds,
 )
 from prcontrol.controller.reactor_box import (

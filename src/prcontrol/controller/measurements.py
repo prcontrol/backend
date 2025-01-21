@@ -1,7 +1,7 @@
 from attrs import field, frozen
 
 
-@frozen
+@frozen(order=True)
 class Temperature:
     hundredth_celsius: int = field(kw_only=True)
 
@@ -22,7 +22,7 @@ class Temperature:
         return self.hundredth_celsius / 100.0
 
 
-@frozen
+@frozen(order=True)
 class Illuminance:
     hudreth_lux: int = field(kw_only=True)
 
@@ -39,7 +39,7 @@ class Illuminance:
         return self.hudreth_lux / 100.0
 
 
-@frozen
+@frozen(order=True)
 class UvIndex:
     tenth_uvi: int = field(kw_only=True)
 
@@ -52,7 +52,7 @@ class UvIndex:
         return self.tenth_uvi / 10.0
 
 
-@frozen
+@frozen(order=True)
 class Voltage:
     milli_volts: int = field(kw_only=True)
 
@@ -65,7 +65,7 @@ class Voltage:
         return self.milli_volts / 1000.0
 
 
-@frozen
+@frozen(order=True)
 class Current:
     milli_amps: int = field(kw_only=True)
 

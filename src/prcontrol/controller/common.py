@@ -3,7 +3,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from enum import Enum
 from typing import Any
@@ -21,6 +21,39 @@ class LedState(Enum):
     HIGH = 1
     BLINK_SLOW = 500
     BLINK_FAST = 200
+
+
+class LedSide(Enum):
+    FRONT = 0
+    BACK = 1
+
+
+class LedLane(Enum):
+    LANE_1 = 0
+    LANE_2 = 1
+    LANE_3 = 2
+
+    def demux[T](self, val_1: T, val_2: T, val_3: T) -> T:
+        """Helper method for matching values to lanes"""
+        if self == LedLane.LANE_1:
+            return val_1
+        elif self == LedLane.LANE_2:
+            return val_2
+        elif self == LedLane.LANE_3:
+            return val_3
+        raise RuntimeError(f"Invalid LedLane {self}")
+
+
+@attrs.frozen
+class LedPosition:
+    lane: LedLane
+    side: LedSide
+
+    @staticmethod
+    def led_iter() -> Iterable["LedPosition"]:
+        for lane in LedLane.LANE_1, LedLane.LANE_2, LedLane.LANE_3:
+            for side in LedSide.FRONT, LedSide.BACK:
+                yield LedPosition(lane, side)
 
 
 @attrs.frozen
@@ -199,3 +232,44 @@ class StatusLeds(ABC):
     def _blink_stop_led(self, channel: int) -> None:
         if channel in self._blinking_io16_channels:
             self._blinking_io16_channels.pop(channel)
+
+
+type SensorObserver[T] = (
+    None
+    | Callable[[T, T, attrs.Attribute[Any], Any], None]
+    | list[Callable[[T, T, attrs.Attribute[Any], Any], None]]
+)
+
+
+def sensor_observer_callback_dispatcher(
+    self: Any, attribute: "attrs.Attribute[Any]", value: Any
+) -> Any:
+    """Designed to be used as an attrs on_setattr hook.
+    Dispatches the changed attributes to the observers
+    as defined in the Attrs-Classes' `.callback` field.
+    """
+    if attribute.name != "callback" and hasattr(self, "callback"):
+        cb = self.callback
+        if cb is not None:
+            evolved = attrs.evolve(
+                self, **{"callback": None, attribute.name: value}
+            )
+
+            if isinstance(cb, list):
+                for f in cb:
+                    f(self, evolved, attribute, value)
+            else:
+                cb(self, evolved, attribute, value)
+
+    return value
+
+
+def callable_field() -> Any:
+    return attrs.field(
+        default=None,
+        on_setattr=attrs.setters.NO_OP,
+        eq=False,
+        repr=False,
+        order=False,
+        hash=False,
+    )

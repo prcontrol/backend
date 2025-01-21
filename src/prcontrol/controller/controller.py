@@ -1,47 +1,752 @@
-from typing import Self
+# mypy: disable-error-code=import-untyped
+# We dont have typing information for tinkerforge unfurtunately :(
 
-from tinkerforge.ip_connection import IPConnection  #  type: ignore
+import logging
+from collections.abc import Callable
+from enum import Enum
+from functools import partial
+from typing import Any, Self
 
+import attrs
+from attrs import define, field, frozen, setters
+from tinkerforge.ip_connection import IPConnection
+
+from prcontrol.controller.common import LedLane, LedPosition, LedSide, LedState
+from prcontrol.controller.configuration import ExperimentTemplate
+from prcontrol.controller.measurements import Temperature, UvIndex, Voltage
 from prcontrol.controller.power_box import (
+    CaseLidState,
     PowerBox,
     PowerBoxBricklets,
+    PowerBoxSensorState,
 )
-from prcontrol.controller.reactor_box import ReactorBox, ReactorBoxBricklets
+from prcontrol.controller.reactor_box import (
+    ReactorBox,
+    ReactorBoxBricklets,
+    ReactorBoxSensorState,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class ThresholdStatus(Enum):
+    OK = 0
+    EXCEEDED = 1
+    OK_AGAIN = 2
+    ABORT = 3
+
+
+@define
+class ControllerState:
+    reactor_box_connected: bool
+    power_box_connected: bool
+
+    sample_lane_1: bool
+    sample_lane_2: bool
+    sample_lane_3: bool
+
+    exp_running_lane_1: bool
+    exp_running_lane_2: bool
+    exp_running_lane_3: bool
+
+    uv_installed: bool
+
+    ambient_temp_status: ThresholdStatus
+    IR_temp_1_threshold_status: ThresholdStatus
+    IR_temp_2_threshold_status: ThresholdStatus
+    IR_temp_3_threshold_status: ThresholdStatus
+    thermocouple_theshold_status: ThresholdStatus
+
+    reactor_box_state: ReactorBoxSensorState = field(on_setattr=setters.NO_OP)
+    power_box_state: PowerBoxSensorState = field(on_setattr=setters.NO_OP)
+
+    @staticmethod
+    def default(
+        reactor_state: ReactorBoxSensorState, power_state: PowerBoxSensorState
+    ) -> "ControllerState":
+        return ControllerState(
+            reactor_box_connected=True,
+            power_box_connected=True,
+            sample_lane_1=True,
+            sample_lane_2=True,
+            sample_lane_3=True,
+            exp_running_lane_1=True,
+            exp_running_lane_2=True,
+            exp_running_lane_3=True,
+            uv_installed=True,
+            ambient_temp_status=ThresholdStatus.OK,
+            IR_temp_1_threshold_status=ThresholdStatus.OK,
+            IR_temp_2_threshold_status=ThresholdStatus.OK,
+            IR_temp_3_threshold_status=ThresholdStatus.OK,
+            thermocouple_theshold_status=ThresholdStatus.OK,
+            reactor_box_state=reactor_state,
+            power_box_state=power_state,
+        )
+
+
+@frozen
+class TfEndpoint:
+    host: str
+    port: int
+
+
+@frozen
+class ControllerConfig:
+    threshold_warn_ambient_temp: Temperature
+    threshold_abort_ambient_temp: Temperature
+
+    threshold_warn_IR_temp: tuple[Temperature, Temperature, Temperature]
+    threshold_abort_IR_temp: tuple[Temperature, Temperature, Temperature]
+
+    threshold_thermocouple_temp: Temperature
+    threshold_thermocouple_affected_lanes: frozenset[LedLane]
+
+    @staticmethod
+    def default_values() -> "ControllerConfig":
+        # TODO get sensible values
+        return ControllerConfig(
+            threshold_warn_ambient_temp=Temperature.from_celsius(0),
+            threshold_abort_ambient_temp=Temperature.from_celsius(0),
+            threshold_warn_IR_temp=(
+                Temperature.from_celsius(0),
+                Temperature.from_celsius(0),
+                Temperature.from_celsius(0),
+            ),
+            threshold_abort_IR_temp=(
+                Temperature.from_celsius(0),
+                Temperature.from_celsius(0),
+                Temperature.from_celsius(0),
+            ),
+            threshold_thermocouple_temp=Temperature.from_celsius(0),
+            threshold_thermocouple_affected_lanes=frozenset(
+                (LedLane.LANE_1, LedLane.LANE_2, LedLane.LANE_3)
+            ),
+        )
+
+
+type SensorObserver[T] = Callable[
+    [T, T, attrs.Attribute[Any], Any],
+    None,
+]
 
 
 class Controller:
-    reactor_ipcon: IPConnection
-    reactor_box: ReactorBox
-    power_ipcon: IPConnection
-    power_box: PowerBox
+    # TODO:
+    #  - depending the config, set UV installed (software)
+    #      Ist laut Software eine UV-LED installiert (Emissionsmaxima < 400 nm),
+    #      dann soll diese LED zur Warnung leuchten (mittels A6 PhotoBox).
+    #  - implement missing observers
+    #
 
-    REACTOR_BOX_SENSOR_PERIOD_MS = 200
-    POWER_BOX_SENSOR_PERIOD_MS = 200
+    state: ControllerState
 
-    def __init__(self) -> None:
-        self.reactor_ipcon = IPConnection()
-        self.power_ipcon = IPConnection()
-        reactor_box_bricklets = ReactorBoxBricklets(self.reactor_ipcon)
-        power_box_bricklets = PowerBoxBricklets(self.power_ipcon)
+    _reactor_box_ipcon: IPConnection
+    _reactor_box_endpoint: TfEndpoint
+    _reactor_box: ReactorBox
 
-        self.reactor_box = ReactorBox(
-            reactor_box_bricklets, self.REACTOR_BOX_SENSOR_PERIOD_MS
+    _power_box_ipcon: IPConnection
+    _power_box_endpoint: TfEndpoint
+    _power_box: PowerBox
+
+    config: ControllerConfig
+
+    # These are used to specify the callback handlers for changes in
+    # both ReactorBoxSensorState and PowerBoxSensorState.
+    # The observers receive
+    #  - the old state
+    #  - the new, modifyed state
+    #  - the modified attribute
+    #  - the new value
+    _callback_handlers_reactor_box: dict[
+        "attrs.Attribute[Any]",
+        SensorObserver[ReactorBoxSensorState],
+    ]
+    _callback_handlers_power_box: dict[
+        "attrs.Attribute[Any]",
+        SensorObserver[PowerBoxSensorState],
+    ]
+
+    _voltage_errors: set[LedPosition]
+
+    def __init__(
+        self,
+        reactor_box: TfEndpoint | tuple[str, int],
+        power_box: TfEndpoint | tuple[str, int],
+        config: None | ControllerConfig = None,
+        reactor_box_sensor_period_ms: int = 200,
+        power_box_sensor_period_ms: int = 200,
+    ) -> None:
+        logger.info("Initializing Controller")
+
+        if not isinstance(reactor_box, TfEndpoint):
+            reactor_box = TfEndpoint(*reactor_box)
+        if not isinstance(power_box, TfEndpoint):
+            power_box = TfEndpoint(*power_box)
+
+        if config is None:
+            config = ControllerConfig.default_values()
+        self.config = config
+
+        self.state = ControllerState.default(
+            self._reactor_box.sensors, self._power_box.sensors
         )
-        self.power_box = PowerBox(
-            power_box_bricklets, self.POWER_BOX_SENSOR_PERIOD_MS
+
+        self._voltage_errors = set()
+
+        self._reactor_box_ipcon = IPConnection()
+        self._reactor_box_endpoint = reactor_box
+        self._reactor_box = ReactorBox(
+            ReactorBoxBricklets(self._reactor_box_ipcon),
+            self._dispatch_onchange_reactor_box,
+            reactor_box_sensor_period_ms,
         )
 
-    def initialize(self) -> Self:
-        """Initializes controller. Requires established ip connection."""
-        self.reactor_box.initialize()
-        self.power_box.initialize()
+        self._power_box_ipcon = IPConnection()
+        self._power_box_endpoint = power_box
+        self._power_box = PowerBox(
+            PowerBoxBricklets(self._power_box_ipcon),
+            self._dispatch_onchange_power_box,
+            power_box_sensor_period_ms,
+        )
+
+        self._power_box_ipcon.register_callback(
+            IPConnection.CALLBACK_CONNECTED,
+            self._callback_power_box_connected,
+        )
+        self._power_box_ipcon.register_callback(
+            IPConnection.CALLBACK_DISCONNECTED,
+            self._callback_power_box_disconnected,
+        )
+        self._reactor_box_ipcon.register_callback(
+            IPConnection.CALLBACK_CONNECTED,
+            self._callback_reactor_box_connected,
+        )
+        self._reactor_box_ipcon.register_callback(
+            IPConnection.CALLBACK_DISCONNECTED,
+            self._callback_reactor_box_disconnected,
+        )
+
+        def noop[T](
+            _old: T, _new: T, _attribute: "attrs.Attribute[Any]", _value: Any
+        ) -> None: ...
+
+        # The callback handlers for both reactorbox and powerbox
+        # will dispatch the callbacks according to these functions.
+        # You should use noop to explicitly mark a sensor as unhandled.
+        reactor_sensors = attrs.fields(ReactorBoxSensorState)
+        self._callback_handlers_reactor_box = {
+            reactor_sensors.thermocouble_temp: self._observer_thermocouple,
+            reactor_sensors.ambient_light: noop,
+            reactor_sensors.ambient_temperature: self._observer_ambient_temp,
+            reactor_sensors.lane_1_ir_temp: partial(
+                self._observer_ir_temp_lane, lane=LedLane.LANE_1
+            ),
+            reactor_sensors.lane_2_ir_temp: partial(
+                self._observer_ir_temp_lane, lane=LedLane.LANE_2
+            ),
+            reactor_sensors.lane_3_ir_temp: partial(
+                self._observer_ir_temp_lane, lane=LedLane.LANE_3
+            ),
+            reactor_sensors.uv_index: self._observer_uv_sensor,
+            reactor_sensors.lane_1_sample_taken: partial(
+                self._oberserver_sample_taken, lane=LedLane.LANE_1
+            ),
+            reactor_sensors.lane_2_sample_taken: partial(
+                self._oberserver_sample_taken, lane=LedLane.LANE_2
+            ),
+            reactor_sensors.lane_3_sample_taken: partial(
+                self._oberserver_sample_taken, lane=LedLane.LANE_3
+            ),
+            reactor_sensors.maintenance_mode: self._observer_maintenance,
+            reactor_sensors.cable_control: self._observer_reactor_box_cable,
+        }
+        # fmt: off
+        assert frozenset(self._callback_handlers_reactor_box) \
+            == frozenset(reactor_sensors) - {reactor_sensors.callback}, \
+            "There are fields in ReactorBoxSensorStates that dont have a " \
+            "callback handler in Controller! Pls fix!"
+        # fmt: on
+
+        power_sensors = attrs.fields(PowerBoxSensorState)
+        self._callback_handlers_power_box = {
+            power_sensors.abmient_temperature: noop,
+            power_sensors.voltage_total: noop,
+            power_sensors.current_total: noop,
+            power_sensors.voltage_lane_1_front: partial(
+                self._observer_voltage_error,
+                led=LedPosition(LedLane.LANE_1, LedSide.FRONT),
+            ),
+            power_sensors.voltage_lane_1_back: partial(
+                self._observer_voltage_error,
+                led=LedPosition(LedLane.LANE_1, LedSide.BACK),
+            ),
+            power_sensors.voltage_lane_2_front: partial(
+                self._observer_voltage_error,
+                led=LedPosition(LedLane.LANE_2, LedSide.FRONT),
+            ),
+            power_sensors.voltage_lane_2_back: partial(
+                self._observer_voltage_error,
+                led=LedPosition(LedLane.LANE_2, LedSide.BACK),
+            ),
+            power_sensors.voltage_lane_3_front: partial(
+                self._observer_voltage_error,
+                led=LedPosition(LedLane.LANE_3, LedSide.FRONT),
+            ),
+            power_sensors.voltage_lane_3_back: partial(
+                self._observer_voltage_error,
+                led=LedPosition(LedLane.LANE_3, LedSide.BACK),
+            ),
+            power_sensors.current_lane_1_front: noop,
+            power_sensors.current_lane_1_back: noop,
+            power_sensors.current_lane_2_front: noop,
+            power_sensors.current_lane_2_back: noop,
+            power_sensors.current_lane_3_front: noop,
+            power_sensors.current_lane_3_back: noop,
+            power_sensors.powerbox_lid: self._observer_boxes_closed,
+            power_sensors.reactorbox_lid: self._observer_boxes_closed,
+            power_sensors.led_installed_lane_1_front_and_vial: noop,
+            power_sensors.led_installed_lane_1_back: noop,
+            power_sensors.led_installed_lane_2_front_and_vial: noop,
+            power_sensors.led_installed_lane_2_back: noop,
+            power_sensors.led_installed_lane_3_front_and_vial: noop,
+            power_sensors.led_installed_lane_3_back: noop,
+            power_sensors.water_detected: self._observer_water_sensor,
+            power_sensors.cable_control: self._observer_power_box_cable,
+        }
+        # fmt: off
+        assert frozenset(self._callback_handlers_power_box) \
+            == frozenset(power_sensors) - {power_sensors.callback}, \
+            "There are fields in PowerBoxSensorStates that dont have a " \
+            "callback handler in Controller! Pls fix!"
+        # fmt: on
+        logger.debug("Initializing Controller done.")
+
+    def connect(self) -> Self:  # ToDo: Catch Exceptions
+        logger.info("Connecting to reactorbox and powerbox.")
+        self._reactor_box_ipcon.connect(
+            self._reactor_box_endpoint.host, self._reactor_box_endpoint.port
+        )
+        logger.debug(f"Connected to reactorbox ({self._reactor_box_endpoint})")
+        self._power_box_ipcon.connect(
+            self._power_box_endpoint.host, self._power_box_endpoint.port
+        )
+        logger.debug(f"Connected to powerbox ({self._power_box_endpoint})")
+        self._reactor_box_ipcon.set_auto_reconnect(True)
+        self._power_box_ipcon.set_auto_reconnect(True)
         return self
 
-    def connect(self) -> Self:
-        raise NotImplementedError()
-
-    def check_connection(self) -> Self:
-        raise NotImplementedError()
-
     def disconnect(self) -> Self:
-        raise NotImplementedError()
+        logger.info("Disconnecting.")
+        self._reactor_box_ipcon.disconnect()
+        self._power_box_ipcon.disconnect()
+        return self
+
+    def _dispatch_onchange_reactor_box(
+        self,
+        old_sensors: ReactorBoxSensorState,
+        new_sensors: ReactorBoxSensorState,
+        attribute: "attrs.Attribute[Any]",
+        value: Any,
+    ) -> None:
+        if attribute not in self._callback_handlers_reactor_box:
+            raise RuntimeError(f"Unhandled callback attribute {attribute}.")
+        self._callback_handlers_reactor_box[attribute](
+            old_sensors, new_sensors, attribute, value
+        )
+
+    def _dispatch_onchange_power_box(
+        self,
+        old_sensors: PowerBoxSensorState,
+        new_sensors: PowerBoxSensorState,
+        attribute: "attrs.Attribute[Any]",
+        value: Any,
+    ) -> None:
+        if attribute not in self._callback_handlers_power_box:
+            raise RuntimeError(f"Unhandled callback attribute {attribute}.")
+        self._callback_handlers_power_box[attribute](
+            old_sensors, new_sensors, attribute, value
+        )
+
+    def _callback_reactor_box_connected(self) -> None:
+        self.state.reactor_box_connected = True
+        # TODO: can initilize can be called twice without creating a bug??
+        #   we should probably implement this in ReactorBox though....
+        logger.debug("Connection callback received from reactor box")
+        self._reactor_box.initialize()
+        self._set_connected_led()
+
+    def _callback_reactor_box_disconnected(self) -> None:
+        logger.info("Disconnected from reactor box!")
+        self.state.reactor_box_connected = False
+        self._set_connected_led()
+
+    def _callback_power_box_connected(self) -> None:
+        self.state.power_box_connected = True
+        # TODO can initilize can be called twice without creating a bug?
+        #   see above....
+        logger.debug("Connection callback received from power box")
+        self._power_box.initialize()
+        self._set_connected_led()
+
+    def _callback_power_box_disconnected(self) -> None:
+        logger.info("Disconnected from power box!")
+        self.state.power_box_connected = False
+        self._set_connected_led()
+
+    def _set_connected_led(self) -> None:
+        """
+        Wenn erfolgreich zu beiden Boxen eine IP-Verbindung aufgebaut werden
+        konnte & die Initialisierung abgeschlossen ist, soll diese LED
+        leuchten. Wenn die Verbindung aufgebaut ist, aber die Initialisierung
+        der Software bzw. der Bricklets noch erfolgt, soll diese LED blinken
+        (500 ms an / 500 ms aus).
+        """
+        # We gonna switch that up. The LED blinks, while the boxes are connected
+        # Otherwise, how should we change the LED color on disconnect?
+        # We wouldn't have a connection to communicate with the led...
+        # The blinking stops automatically after the last monoflop has passed.
+        if self.state.reactor_box_connected and self.state.power_box_connected:
+            self._power_box.io_panel.led_connected = LedState.BLINK_FAST
+
+    # ===============================
+    # =           EVENTS            =
+    # ===============================
+
+    def alert_take_sample(self, lane: LedLane) -> Self:
+        """
+        Wurde im Experiment hinterlegt, dass nach einem Zeitraum X eine
+        Probe genommen werden soll, dann soll nach diesem Zeitraum diese
+        LED leuchten LED (A3/4/5 PhotoBox) , zudem soll die LED Running
+        blinken (→ siehe dort für weitere Informationen). Sollte ein
+        Spannungsfehler für diese Lane detektiert geworden sein, soll die
+        entsprechende Take Sample LED blinken (500 ms an / 500 ms aus),
+        wurden zwei Spannungsfehler für eine Lane detektiert, soll die
+        LED schnell blinken (250 ms an / 250 ms aus).
+        """
+        # TODO implement this. Also implement _observer_sample_taken
+        #   which signals when the sample taken button is pressed.
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def start_experiment(self, lane: LedLane) -> Self:
+        # TODO also dont forget to set/unset running led here!
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def end_experiment(self, lane: LedLane) -> Self:
+        # TODO also dont forget to set/unset running led here!
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def set_experiment_configuration(
+        self, lane: LedLane, config: ExperimentTemplate
+    ) -> Self:
+        # I think this is necessary so control led intensity. Dont
+        # think its worth to create another configuration struct as
+        # ExperimentTemplate has all we need imo.
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def abort_all_experiments(self, reason: None | str = None) -> Self:
+        logger.warning(
+            f"All experiments aborted! Reason: {reason}\n"
+            f"Current state is {self.state}!"
+        )
+        self.abort_experiment(LedLane.LANE_1)
+        self.abort_experiment(LedLane.LANE_2)
+        self.abort_experiment(LedLane.LANE_3)
+        return self
+
+    def abort_experiment(
+        self, lane: LedLane, reason: None | str = None
+    ) -> Self:
+        logger.warning(f"Abortin experiment on lane {lane} (reason: {reason})")
+        self.end_experiment(lane)
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def reset_ambient_temp_warning(self) -> Self:
+        self.state.ambient_temp_status = ThresholdStatus.OK
+        return self
+
+    def reset_lane_ir_warnings(self) -> Self:
+        self.state.IR_temp_1_threshold_status = ThresholdStatus.OK
+        self.state.IR_temp_2_threshold_status = ThresholdStatus.OK
+        self.state.IR_temp_3_threshold_status = ThresholdStatus.OK
+        return self
+
+    # ===============================
+    # =      SENSOR OBSERVERS       =
+    # ===============================
+
+    def _observer_boxes_closed(
+        self,
+        _old_state: PowerBoxSensorState,
+        new_state: PowerBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        state: CaseLidState,
+    ) -> None:
+        # Both the power- and the reactor-boxes lid state is measured
+        # by the powerbox. Because we need to check both boxes anyway,
+        # we ignore most of the inputs.
+        """
+        Wenn erkannt wird, dass beiden Boxen zu sind (A0 StromBox erkennt
+        Öffnungszustand StromBox; A1 StromBox erkennt Öffnungszustand
+        PhotoBox), soll diese LED leuchten.
+        """
+        if (
+            new_state.powerbox_lid
+            == new_state.reactorbox_lid
+            == CaseLidState.CLOSED
+        ):
+            self._power_box.io_panel.led_boxes_closed = LedState.HIGH
+        else:
+            self._power_box.io_panel.led_boxes_closed = LedState.LOW
+
+    def _observer_power_box_cable(
+        self,
+        _old_state: PowerBoxSensorState,
+        _new_state: PowerBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        correct: bool,
+    ) -> None:
+        # Not sure what to do here tbh...
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def _observer_maintenance(
+        self,
+        _old_state: ReactorBoxSensorState,
+        new_state: ReactorBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        maintenance_mode_active: bool,
+    ) -> None:
+        if maintenance_mode_active:
+            self._power_box.io_panel.led_maintenance_active = LedState.HIGH
+        else:
+            self._power_box.io_panel.led_maintenance_active = LedState.LOW
+
+    def _observer_water_sensor(
+        self,
+        _old_state: PowerBoxSensorState,
+        _new_state: PowerBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        detected: bool,
+    ) -> None:
+        """
+        Wurde ein Wasser Error detektiert (mittels B1 StromBox) soll diese LED
+        schnell blinken (B5 StromBox; 250 ms an / 250 ms aus) & alle Experimente
+        abgebrochen werden.
+        """
+        if not detected:
+            return
+        logger.warning(f"WATER DETECTED!!!!! Current state: {_new_state}")
+        self.abort_all_experiments("water leakage")
+        self._power_box.io_panel.led_warning_water = LedState.BLINK_FAST
+
+    def _observer_voltage_error(
+        self,
+        led: LedPosition,
+        _old_state: PowerBoxSensorState,
+        _new_state: PowerBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        voltage: Voltage,
+    ) -> None:
+        """
+        Wenn laut Software eine LED an einer Position sein soll, für diese
+        Position beim Einschalten der LED aber keine Spannung / Strom mit dem
+        entsprechenden Voltage/Current Bricklet gemessen werden kann soll
+        diese LED blinken (B4 StromBox; 500 ms an / 500 ms aus), sollten
+        mehrere Fehler erkannt worden sein, soll die LED schnell blinken
+        (250 ms an / 250 ms aus).
+        """
+        if voltage.milli_volts == 0 and self._power_box.is_led_active(led):
+            self._voltage_errors.add(led)
+        elif led in self._voltage_errors:
+            self._voltage_errors.remove(led)
+
+        num_errors = len(self._voltage_errors)
+        if num_errors == 1:
+            self._power_box.io_panel.led_warning_voltage = LedState.BLINK_SLOW
+        elif num_errors:
+            self._power_box.io_panel.led_warning_voltage = LedState.BLINK_FAST
+        else:
+            self._power_box.io_panel.led_warning_voltage = LedState.LOW
+
+    def _observer_ir_temp_lane(
+        self,
+        lane: LedLane,
+        _old_state: ReactorBoxSensorState,
+        _new_state: ReactorBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        temp: Temperature,
+    ) -> None:
+        """
+        Standartmäßig leuchtet die grüne LED (B1/2/3 PhotoBox = high)
+        es soll eine (anpassbarer) Temperatur (für jede Lane / jedes
+        Experiment) hinterlegt sein, wird diese Temperatur überschritten,
+        soll auf die rote LED umgeschaltet werden (B1/2/3 PhotoBox →
+        low), sollte die Temperatur danach wieder unter die hinterlegte
+        Temperatur fallen soll alle 500 ms zwischen rot und grün gewechselt
+        werden. Sollte der Wert über eine zweite (höhere) hinterlegte
+        Temperatur steigen soll das Experiment in dieser Lane abgebrochen
+        werden und nur die rote LED leuchten → dementsprechend soll
+        Running dann auch ausgeschaltet werden (wenn dies da einzige oder
+        letzte Experiment war).
+        """
+        threshold_abort = lane.demux(*self.config.threshold_abort_IR_temp)
+        threshold_warn = lane.demux(*self.config.threshold_warn_IR_temp)
+
+        old_status = lane.demux(
+            self.state.IR_temp_1_threshold_status,
+            self.state.IR_temp_2_threshold_status,
+            self.state.IR_temp_3_threshold_status,
+        )
+
+        if temp > threshold_abort or old_status == ThresholdStatus.ABORT:
+            warning = (
+                f"IR temp threshold reached for lane {lane}!: "
+                f"Threshold: {threshold_abort}, "
+                f"Temperature: {temp}"
+            )
+            self.abort_experiment(lane, warning)
+            logger.warning(warning)
+
+            new_status = ThresholdStatus.ABORT
+        elif temp > threshold_warn:
+            logger.warning(
+                f"IR temp in lane {lane} exceeded threshold. "
+                f"Threshold: {threshold_warn}, temp: {temp}"
+            )
+            new_status = ThresholdStatus.EXCEEDED
+        elif old_status == ThresholdStatus.EXCEEDED:
+            new_status = ThresholdStatus.OK_AGAIN
+        else:
+            new_status = old_status
+
+        if new_status == ThresholdStatus.ABORT:
+            new_led = LedState.LOW
+        elif new_status == ThresholdStatus.EXCEEDED:
+            new_led = LedState.BLINK_FAST
+        elif new_status == ThresholdStatus.OK_AGAIN:
+            new_led = LedState.BLINK_SLOW
+        else:
+            new_led = LedState.HIGH
+
+        if lane == LedLane.LANE_1:
+            self.state.IR_temp_1_threshold_status = new_status
+            self._reactor_box.io_panel.led_warning_temp_lane_1 = new_led
+        elif lane == LedLane.LANE_2:
+            self.state.IR_temp_2_threshold_status = new_status
+            self._reactor_box.io_panel.led_warning_temp_lane_2 = new_led
+        elif lane == LedLane.LANE_3:
+            self.state.IR_temp_3_threshold_status = new_status
+            self._reactor_box.io_panel.led_warning_temp_lane_3 = new_led
+
+    def _observer_reactor_box_cable(
+        self,
+        _old_state: ReactorBoxSensorState,
+        _new_state: ReactorBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        correct: bool,
+    ) -> None:
+        # Not sure what to do here tbh...
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def _oberserver_sample_taken(
+        self,
+        lane: LedLane,
+        _old_state: ReactorBoxSensorState,
+        _new_state: ReactorBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        taken: bool,
+    ) -> None:
+        """
+        Wurde im Experiment hinterlegt, dass nach einem Zeitraum X eine
+        Probe genommen werden soll, dann soll nach diesem Zeitraum diese
+        LED leuchten LED (A3/4/5 PhotoBox) , zudem soll die LED Running
+        blinken (→ siehe dort für weitere Informationen). Sollte ein
+        Spannungsfehler für diese Lane detektiert geworden sein, soll die
+        entsprechende Take Sample LED blinken (500 ms an / 500 ms aus),
+        wurden zwei Spannungsfehler für eine Lane detektiert, soll die
+        LED schnell blinken (250 ms an / 250 ms aus).
+        """
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def _observer_uv_sensor(
+        self,
+        _old_state: ReactorBoxSensorState,
+        _new_state: ReactorBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        uv_index: UvIndex,
+    ) -> None:
+        """
+        Standartmäßig leuchtet die grüne LED (A7 PhotoBox = high)
+        es soll eine (anpassbarer) UV-Index hinterlegt sein, wird diese
+        UV-Index überschritten, soll auf die rote LED umgeschaltet werden
+        (A7 PhotoBox → low), sollte der Wert danach wieder unter den
+        hinterlegten Wert fallen soll wieder auf grün geschaltet werden.
+        """
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def _observer_ambient_temp(
+        self,
+        _old_state: ReactorBoxSensorState,
+        _new_state: ReactorBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        temp: Temperature,
+    ) -> None:
+        """
+        Standartmäßig leuchtet die grüne LED (B0 StromBox = high) es
+        soll eine (anpassbarer) Temperatur hinterlegt sein, wird diese
+        Temperatur überschritten, soll auf die rote LED umgeschaltet
+        werden (B0 StromBox → low), diese Temperatur soll aber nicht
+        berücksichtigt werden, um Experimente abzubrechen, sollte die
+        Temperatur danach wieder unter die hinterlegte Temperatur fallen
+        soll alle 500 ms zwischen rot und grün gewechselt werden
+        """
+        if (
+            temp > self.config.threshold_abort_ambient_temp
+            or self.state.ambient_temp_status == ThresholdStatus.ABORT
+        ):
+            warning = (
+                f"Ambient threshold reached!: "
+                f"Threshold: {self.config.threshold_abort_ambient_temp}, "
+                f"Temperature: {temp}"
+            )
+            self.abort_all_experiments(warning)
+            logger.warning(warning)
+            self.state.ambient_temp_status = ThresholdStatus.EXCEEDED
+        elif temp > self.config.threshold_warn_ambient_temp:
+            self.state.ambient_temp_status = ThresholdStatus.EXCEEDED
+            logger.warning("High temperature ({temp})")
+        elif self.state.ambient_temp_status == ThresholdStatus.EXCEEDED:
+            self.state.ambient_temp_status = ThresholdStatus.OK_AGAIN
+        # Otherwise we hold the state...
+
+        # And set the LED accordingly
+        status = self.state.ambient_temp_status
+        if status == ThresholdStatus.OK:
+            led = LedState.HIGH
+        elif status in (ThresholdStatus.EXCEEDED, ThresholdStatus.ABORT):
+            led = LedState.LOW
+        elif status == ThresholdStatus.OK_AGAIN:
+            led = LedState.BLINK_SLOW
+        else:
+            raise RuntimeError(f"Unhandled status {status}")
+        self._power_box.io_panel.led_warning_temp_ambient = led
+
+    def _observer_thermocouple(
+        self,
+        _old_state: ReactorBoxSensorState,
+        _new_state: ReactorBoxSensorState,
+        _attribute: "attrs.Attribute[Any]",
+        temp: Temperature,
+    ) -> None:
+        """
+        Standartmäßig leuchtet die grüne LED (B5 StromBox = high)
+        es soll eine (anpassbarer) Temperatur hinterlegt sein, wird diese
+        Temperatur überschritten, soll auf die rote LED umgeschaltet werden
+        (B5 StromBox → low), sollte die Temperatur danach wieder unter
+        die hinterlegte Temperatur fallen soll alle 500 ms zwischen rot und
+        grün gewechselt werden. Zudem soll es möglich sein die Position
+        an der der sich das Thermocouple befindet (z.B. Metallkörper in
+        Lane 1 oder in der Reaktion in Lane 3) hinterlegbar sein. Zudem
+        soll hinterlegbar sein, ob ein (bestimmtes) Experiment abgebrochen
+        werden soll, sollte der Temperatur-Wert überschritten werden.
+        """
+        raise NotImplementedError("TODO")  # TODO implement this.
