@@ -12,6 +12,7 @@ from attrs import define, field, frozen, setters
 from tinkerforge.ip_connection import IPConnection
 
 from prcontrol.controller.common import LedLane, LedPosition, LedSide, LedState
+from prcontrol.controller.configuration import ExperimentTemplate
 from prcontrol.controller.measurements import Temperature, UvIndex, Voltage
 from prcontrol.controller.power_box import (
     CaseLidState,
@@ -411,7 +412,7 @@ class Controller:
     # =           EVENTS            =
     # ===============================
 
-    def alert_take_sample(self, lane: LedLane) -> None:
+    def alert_take_sample(self, lane: LedLane) -> Self:
         """
         Wurde im Experiment hinterlegt, dass nach einem Zeitraum X eine
         Probe genommen werden soll, dann soll nach diesem Zeitraum diese
@@ -423,17 +424,26 @@ class Controller:
         LED schnell blinken (250 ms an / 250 ms aus).
         """
         # TODO implement this. Also implement _observer_sample_taken
+        #   which signals when the sample taken button is pressed.
         raise NotImplementedError("TODO")  # TODO implement this.
 
-    def start_experiment(self, lane: LedLane) -> None:
+    def start_experiment(self, lane: LedLane) -> Self:
         # TODO also dont forget to set/unset running led here!
         raise NotImplementedError("TODO")  # TODO implement this.
 
-    def end_experiment(self, lane: LedLane) -> None:
+    def end_experiment(self, lane: LedLane) -> Self:
         # TODO also dont forget to set/unset running led here!
         raise NotImplementedError("TODO")  # TODO implement this.
 
-    def abort_all_experiments(self, reason: None | str = None) -> None:
+    def set_experiment_configuration(
+        self, lane: LedLane, config: ExperimentTemplate
+    ) -> Self:
+        # I think this is necessary so control led intensity. Dont
+        # think its worth to create another configuration struct as
+        # ExperimentTemplate has all we need imo.
+        raise NotImplementedError("TODO")  # TODO implement this.
+
+    def abort_all_experiments(self, reason: None | str = None) -> Self:
         logger.warning(
             f"All experiments aborted! Reason: {reason}\n"
             f"Current state is {self.state}!"
@@ -441,10 +451,11 @@ class Controller:
         self.abort_experiment(LedLane.LANE_1)
         self.abort_experiment(LedLane.LANE_2)
         self.abort_experiment(LedLane.LANE_3)
+        return self
 
     def abort_experiment(
         self, lane: LedLane, reason: None | str = None
-    ) -> None:
+    ) -> Self:
         logger.warning(f"Abortin experiment on lane {lane} (reason: {reason})")
         self.end_experiment(lane)
         raise NotImplementedError("TODO")  # TODO implement this.
@@ -559,8 +570,8 @@ class Controller:
     def _observer_ir_temp_lane(
         self,
         lane: LedLane,
-        _old_state: PowerBoxSensorState,
-        _new_state: PowerBoxSensorState,
+        _old_state: ReactorBoxSensorState,
+        _new_state: ReactorBoxSensorState,
         _attribute: "attrs.Attribute[Any]",
         temp: Temperature,
     ) -> None:

@@ -45,7 +45,7 @@ class ConfigFolder[T: ConfigObject]:
     def _path_of_uid(self, uid: int) -> pathlib.Path:
         return self.workspace / f"obj_{uid}.json"
 
-    def load(self, uid: int) -> ConfigObject:
+    def load(self, uid: int) -> T:
         """Get configuration with given `uid`.
 
         Throws `FileNotFoundError` if there is no configuration with the given

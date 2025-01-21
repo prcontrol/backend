@@ -21,7 +21,7 @@ class MyConfigTestObject(ConfigObject):
         return self.name
 
 
-def clean_directory(dir: str):
+def clean_directory(dir: str | pathlib.Path):
     dir = pathlib.Path(dir)
     if os.path.isdir(dir):
         shutil.rmtree(dir)
