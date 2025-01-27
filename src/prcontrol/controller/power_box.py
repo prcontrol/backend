@@ -369,7 +369,7 @@ class PowerBox:
         elif chan == io._CHAN_INPUT_LED_INSTALLED_LANE_3_BACK:
             s.led_installed_lane_3_back = value
         elif chan == io._CHAN_INPUT_WATER_DETECTED:
-            s.water_detected = value
+            s.water_detected = not value
         elif chan == io._CHAN_INPUT_CABLE_CONTROL:
             s.cable_control = value
 
