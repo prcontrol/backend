@@ -367,7 +367,7 @@ class Controller:
             old_sensors, new_sensors, attribute, value
         )
 
-    def _callback_reactor_box_connected(self, *_) -> None:
+    def _callback_reactor_box_connected(self, *_: Any) -> None:
         self.state.reactor_box_connected = True
         # TODO: can initilize can be called twice without creating a bug??
         #   we should probably implement this in ReactorBox though....
@@ -375,12 +375,12 @@ class Controller:
         self._reactor_box.initialize()
         self._set_connected_led()
 
-    def _callback_reactor_box_disconnected(self, *_) -> None:
+    def _callback_reactor_box_disconnected(self, *_: Any) -> None:
         logger.info("Disconnected from reactor box!")
         self.state.reactor_box_connected = False
         self._set_connected_led()
 
-    def _callback_power_box_connected(self, *_) -> None:
+    def _callback_power_box_connected(self, *_: Any) -> None:
         self.state.power_box_connected = True
         # TODO can initilize can be called twice without creating a bug?
         #   see above....
@@ -388,7 +388,7 @@ class Controller:
         self._power_box.initialize()
         self._set_connected_led()
 
-    def _callback_power_box_disconnected(self, *_) -> None:
+    def _callback_power_box_disconnected(self, *_: Any) -> None:
         logger.info("Disconnected from power box!")
         self.state.power_box_connected = False
         self._set_connected_led()
@@ -425,15 +425,15 @@ class Controller:
         """
         # TODO implement this. Also implement _observer_sample_taken
         #   which signals when the sample taken button is pressed.
-        return  # TODO implement this.
+        return self  # TODO implement this.
 
     def start_experiment(self, lane: LedLane) -> Self:
         # TODO also dont forget to set/unset running led here!
-        return  # TODO implement this.
+        return self  # TODO implement this.
 
     def end_experiment(self, lane: LedLane) -> Self:
         # TODO also dont forget to set/unset running led here!
-        return  # TODO implement this.
+        return self  # TODO implement this.
 
     def set_experiment_configuration(
         self, lane: LedLane, config: ExperimentTemplate
@@ -441,7 +441,7 @@ class Controller:
         # I think this is necessary so control led intensity. Dont
         # think its worth to create another configuration struct as
         # ExperimentTemplate has all we need imo.
-        return  # TODO implement this.
+        return self  # TODO implement this.
 
     def abort_all_experiments(self, reason: None | str = None) -> Self:
         logger.warning(
@@ -458,7 +458,7 @@ class Controller:
     ) -> Self:
         logger.warning(f"Abortin experiment on lane {lane} (reason: {reason})")
         self.end_experiment(lane)
-        return  # TODO implement this.
+        return self  # TODO implement this.
 
     def reset_ambient_temp_warning(self) -> Self:
         self.state.ambient_temp_status = ThresholdStatus.OK
