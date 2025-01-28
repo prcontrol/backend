@@ -1,27 +1,30 @@
 import json
 from typing import Any
 
-from attrs import frozen
 from flask import Flask, Request, request
 from flask.typing import ResponseReturnValue
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
 from prcontrol.controller.config_manager import ConfigFolder, ConfigManager
-from prcontrol.controller.configuration import JSONSeriablizable
-from prcontrol.controller.measurements import (
-    Current,
-    Temperature,
+from prcontrol.controller.controller import (
+    Controller,
+    ControllerConfig,
 )
-from prcontrol.controller.power_box import CaseLidState, PowerBoxSensorState
-from prcontrol.controller.reactor_box import ReactorBoxSensorState
+from prcontrol.controller.state_snapshots import ControllerStateWsData
+from prcontrol.webapi.endpoints import POWER_BOX_ENDPOINT, REACTOR_BOX_ENDPOINT
 
 app = Flask(__name__)
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 config_manager = ConfigManager()
 
-socketio = SocketIO(app, cors_allowed_origins="*")
+controller = Controller(
+    reactor_box=REACTOR_BOX_ENDPOINT,
+    power_box=POWER_BOX_ENDPOINT,
+    config=ControllerConfig.default_values(),
+)
 
 
 @app.route("/", methods=["GET"])
@@ -139,115 +142,6 @@ def handle_list_api(
 
 
 # Websocket part:
-
-
-@frozen
-class ReactorBoxWsData(JSONSeriablizable):
-    thermocouple_temp: float
-    ambient_light: float
-    ambient_temperature: float
-    lane_1_ir_temp: float
-    lane_2_ir_temp: float
-    lane_3_ir_temp: float
-    uv_index: float
-    lane_1_sample_taken: bool
-    lane_2_sample_taken: bool
-    lane_3_sample_taken: bool
-    maintenance_mode: bool
-    cable_control: bool
-
-    @staticmethod
-    def from_state(state: ReactorBoxSensorState) -> "ReactorBoxWsData":
-        return ReactorBoxWsData(
-            thermocouple_temp=state.thermocouble_temp.celsius,
-            ambient_light=state.ambient_light.lux,
-            ambient_temperature=state.ambient_temperature.celsius,
-            lane_1_ir_temp=state.lane_1_ir_temp.celsius,
-            lane_2_ir_temp=state.lane_2_ir_temp.celsius,
-            lane_3_ir_temp=state.lane_3_ir_temp.celsius,
-            uv_index=state.uv_index.uvi,
-            lane_1_sample_taken=state.lane_1_sample_taken,
-            lane_2_sample_taken=state.lane_2_sample_taken,
-            lane_3_sample_taken=state.lane_3_sample_taken,
-            maintenance_mode=state.maintenance_mode,
-            cable_control=state.cable_control,
-        )
-
-
-@frozen
-class PowerBoxWsData(JSONSeriablizable):
-    abmient_temperature: float
-    voltage_total: float
-    current_total: float
-    voltage_lane_1_front: float
-    voltage_lane_1_back: float
-    voltage_lane_2_front: float
-    voltage_lane_2_back: float
-    voltage_lane_3_front: float
-    voltage_lane_3_back: float
-    current_lane_1_front: float
-    current_lane_1_back: float
-    current_lane_2_front: float
-    current_lane_2_back: float
-    current_lane_3_front: float
-    current_lane_3_back: float
-    powerbox_closed: bool
-    reactorbox_closed: bool
-    led_installed_lane_1_front_and_vial: bool
-    led_installed_lane_1_back: bool
-    led_installed_lane_2_front_and_vial: bool
-    led_installed_lane_2_back: bool
-    led_installed_lane_3_front_and_vial: bool
-    led_installed_lane_3_back: bool
-    water_detected: bool
-    cable_control: bool
-
-    @staticmethod
-    def from_state(state: PowerBoxSensorState) -> "PowerBoxWsData":
-        return PowerBoxWsData(
-            abmient_temperature=state.abmient_temperature.celsius,
-            voltage_total=state.voltage_total.volts,
-            current_total=state.current_total.ampere,
-            voltage_lane_1_front=state.voltage_lane_1_front.volts,
-            voltage_lane_1_back=state.voltage_lane_1_back.volts,
-            voltage_lane_2_front=state.voltage_lane_2_front.volts,
-            voltage_lane_2_back=state.voltage_lane_2_back.volts,
-            voltage_lane_3_front=state.voltage_lane_3_front.volts,
-            voltage_lane_3_back=state.voltage_lane_3_back.volts,
-            current_lane_1_front=state.current_lane_1_front.ampere,
-            current_lane_1_back=state.current_lane_1_back.ampere,
-            current_lane_2_front=state.current_lane_2_front.ampere,
-            current_lane_2_back=state.current_lane_2_back.ampere,
-            current_lane_3_front=state.current_lane_3_front.ampere,
-            current_lane_3_back=state.current_lane_3_back.ampere,
-            powerbox_closed=state.powerbox_lid == CaseLidState.CLOSED,
-            reactorbox_closed=state.reactorbox_lid == CaseLidState.CLOSED,
-            led_installed_lane_1_front_and_vial=state.led_installed_lane_1_front_and_vial,
-            led_installed_lane_1_back=state.led_installed_lane_1_back,
-            led_installed_lane_2_front_and_vial=state.led_installed_lane_2_front_and_vial,
-            led_installed_lane_2_back=state.led_installed_lane_2_back,
-            led_installed_lane_3_front_and_vial=state.led_installed_lane_3_front_and_vial,
-            led_installed_lane_3_back=state.led_installed_lane_3_back,
-            water_detected=state.water_detected,
-            cable_control=state.cable_control,
-        )
-
-
-@frozen
-class StateWsData(JSONSeriablizable):
-    reactor_box: ReactorBoxWsData
-    power_box: PowerBoxWsData
-
-    @staticmethod
-    def from_sensor_states(
-        state_reactor: ReactorBoxSensorState, state_power: PowerBoxSensorState
-    ) -> "StateWsData":
-        return StateWsData(
-            reactor_box=ReactorBoxWsData.from_state(state_reactor),
-            power_box=PowerBoxWsData.from_state(state_power),
-        )
-
-
 @socketio.on("connect")
 def handle_connect() -> None:
     socketio.start_background_task(target=send_data)
@@ -261,15 +155,9 @@ def handle_disconnect() -> None:
 
 def send_data() -> None:
     while True:
-        data_r = ReactorBoxSensorState.empty()
-        data_p = PowerBoxSensorState.empty()
-
-        # set example values for testing
-        data_r.ambient_temperature = Temperature.from_celsius(20)
-        data_p.current_total = Current.from_milli_amps(2222)
-
+        snapshot = ControllerStateWsData.from_state(controller.state)
         socketio.emit(
             "pcrdata",
-            {"data": StateWsData.from_sensor_states(data_r, data_p).to_json()},
+            {"data": snapshot.to_json()},
         )
         socketio.sleep(1)
