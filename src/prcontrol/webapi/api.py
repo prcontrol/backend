@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any
 
 from flask import Flask, Request, request
@@ -14,150 +15,157 @@ from prcontrol.controller.controller import (
 from prcontrol.controller.state_snapshots import ControllerStateWsData
 from prcontrol.webapi.endpoints import POWER_BOX_ENDPOINT, REACTOR_BOX_ENDPOINT
 
-app = Flask(__name__)
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
-
-config_manager = ConfigManager()
-
-controller = Controller(
-    reactor_box=REACTOR_BOX_ENDPOINT,
-    power_box=POWER_BOX_ENDPOINT,
-    config=ControllerConfig.default_values(),
-)
+config_manager: ConfigManager
+controller: Controller
 
 
-@app.route("/", methods=["GET"])
-def index() -> ResponseReturnValue:
-    return "<h1> Hello World! </h1>", 200
+def create_app() -> tuple[Flask, SocketIO]:
+    global config_manager, controller
+    app = Flask(__name__)
+    CORS(app)
+    socketio = SocketIO(app, cors_allowed_origins="*")
 
+    config_manager = ConfigManager()
 
-@app.route("/led", methods=["GET", "POST", "DELETE"])
-def led() -> ResponseReturnValue:
-    return handle_config_api(config_manager.leds, request)
+    controller = Controller(
+        reactor_box=REACTOR_BOX_ENDPOINT,
+        power_box=POWER_BOX_ENDPOINT,
+        config=ControllerConfig.default_values(),
+    )
 
-
-@app.route("/bricklet", methods=["GET"])
-def bricklet() -> ResponseReturnValue:
-    return handle_config_api(config_manager.bricklets, request)
-
-
-@app.route("/exp_tmp", methods=["GET", "POST", "DELETE"])
-def exp_tmp() -> ResponseReturnValue:
-    return handle_config_api(config_manager.experiment_templates, request)
-
-
-@app.route("/config", methods=["GET", "POST", "DELETE"])
-def config() -> ResponseReturnValue:
-    return handle_config_api(config_manager.configs, request)
-
-
-@app.route("/experiment", methods=["GET", "DELETE"])
-def experiment() -> ResponseReturnValue:
-    return handle_config_api(config_manager.experiments, request)
-
-
-@app.route("/list_led", methods=["GET"])
-def list_leds() -> ResponseReturnValue:
-    return handle_list_api(config_manager.leds, request)
-
-
-@app.route("/list_bricklet", methods=["GET"])
-def list_bricklets() -> ResponseReturnValue:
-    return handle_list_api(config_manager.bricklets, request)
-
-
-@app.route("/list_exp_tmp", methods=["GET"])
-def list_exp_tmps() -> ResponseReturnValue:
-    return handle_list_api(config_manager.experiment_templates, request)
-
-
-@app.route("/list_config", methods=["GET"])
-def list_configs() -> ResponseReturnValue:
-    return handle_list_api(config_manager.configs, request)
-
-
-@app.route("/list_experiment", methods=["GET"])
-def list_experiments() -> ResponseReturnValue:
-    return handle_list_api(config_manager.experiments, request)
-
-
-def handle_config_api(
-    folder: ConfigFolder[Any], request: Request
-) -> ResponseReturnValue:
-    if request.method == "POST":
+    connection_exceptions = []
+    for _ in range(10):
         try:
-            file = request.files["json_file"]
-            folder.add_from_json(file.stream.read())
-            return "success", 200
-        except KeyError:
-            return "post expects a json_file", 400
-
-    elif request.method == "GET":
-        _uid = request.args.get("uid")
-        if not _uid:
-            return "get expects argument uid", 400
-
-        try:
-            uid = int(_uid)
-        except ValueError:
-            return "uid must be integer", 400
-
-        try:
-            config = folder.load(uid)
-            return config.to_json(), 200
-        except FileNotFoundError:
-            return "file does not exist", 400
-
-    elif request.method == "DELETE":
-        _uid = request.args.get("uid")
-        if not _uid:
-            return "delete expects argument uid", 400
-
-        try:
-            uid = int(_uid)
-        except ValueError:
-            return "uid must be integer", 400
-
-        folder.delete(uid)
-        return "success", 200
-
-    raise RuntimeError("We should never get here")
-
-
-def handle_list_api(
-    folder: ConfigFolder[Any], request: Request
-) -> ResponseReturnValue:
-    assert request.method == "GET"
-
-    list_of_configs = [
-        {
-            "uid": config_object.get_uid(),
-            "description": config_object.get_description(),
-        }
-        for config_object in folder.load_all()
-    ]
-
-    return json.dumps({"results": list_of_configs}), 200
-
-
-# Websocket part:
-@socketio.on("connect")
-def handle_connect() -> None:
-    socketio.start_background_task(target=send_data)
-    print("WebSocket-Client verbunden!")
-
-
-@socketio.on("disconnect")
-def handle_disconnect() -> None:
-    print("WebSocket-Client getrennt!")
-
-
-def send_data() -> None:
-    while True:
-        snapshot = ControllerStateWsData.from_state(controller.state)
-        socketio.emit(
-            "pcrdata",
-            {"data": snapshot.to_json()},
+            controller.connect()
+        except Exception as e:
+            app.logger.warning(f"Failed to connect: {e}")
+            connection_exceptions.append(e)
+        if connection_exceptions:
+            time.sleep(1)
+    if connection_exceptions:
+        raise RuntimeError(
+            "Failed to connect to backend after 10 tries:"
+            + repr(connection_exceptions)
         )
-        socketio.sleep(1)
+
+    @app.route("/", methods=["GET"])
+    def index() -> ResponseReturnValue:
+        return "<h1> Hello World! </h1>", 200
+
+    @app.route("/led", methods=["GET", "POST", "DELETE"])
+    def led() -> ResponseReturnValue:
+        return handle_config_api(config_manager.leds, request)
+
+    @app.route("/bricklet", methods=["GET"])
+    def bricklet() -> ResponseReturnValue:
+        return handle_config_api(config_manager.bricklets, request)
+
+    @app.route("/exp_tmp", methods=["GET", "POST", "DELETE"])
+    def exp_tmp() -> ResponseReturnValue:
+        return handle_config_api(config_manager.experiment_templates, request)
+
+    @app.route("/config", methods=["GET", "POST", "DELETE"])
+    def config() -> ResponseReturnValue:
+        return handle_config_api(config_manager.configs, request)
+
+    @app.route("/experiment", methods=["GET", "DELETE"])
+    def experiment() -> ResponseReturnValue:
+        return handle_config_api(config_manager.experiments, request)
+
+    @app.route("/list_led", methods=["GET"])
+    def list_leds() -> ResponseReturnValue:
+        return handle_list_api(config_manager.leds, request)
+
+    @app.route("/list_bricklet", methods=["GET"])
+    def list_bricklets() -> ResponseReturnValue:
+        return handle_list_api(config_manager.bricklets, request)
+
+    @app.route("/list_exp_tmp", methods=["GET"])
+    def list_exp_tmps() -> ResponseReturnValue:
+        return handle_list_api(config_manager.experiment_templates, request)
+
+    @app.route("/list_config", methods=["GET"])
+    def list_configs() -> ResponseReturnValue:
+        return handle_list_api(config_manager.configs, request)
+
+    @app.route("/list_experiment", methods=["GET"])
+    def list_experiments() -> ResponseReturnValue:
+        return handle_list_api(config_manager.experiments, request)
+
+    def handle_config_api(
+        folder: ConfigFolder[Any], request: Request
+    ) -> ResponseReturnValue:
+        if request.method == "POST":
+            try:
+                file = request.files["json_file"]
+                folder.add_from_json(file.stream.read())
+                return "success", 200
+            except KeyError:
+                return "post expects a json_file", 400
+
+        elif request.method == "GET":
+            _uid = request.args.get("uid")
+            if not _uid:
+                return "get expects argument uid", 400
+
+            try:
+                uid = int(_uid)
+            except ValueError:
+                return "uid must be integer", 400
+
+            try:
+                config = folder.load(uid)
+                return config.to_json(), 200
+            except FileNotFoundError:
+                return "file does not exist", 400
+
+        elif request.method == "DELETE":
+            _uid = request.args.get("uid")
+            if not _uid:
+                return "delete expects argument uid", 400
+
+            try:
+                uid = int(_uid)
+            except ValueError:
+                return "uid must be integer", 400
+
+            folder.delete(uid)
+            return "success", 200
+
+        raise RuntimeError("We should never get here")
+
+    def handle_list_api(
+        folder: ConfigFolder[Any], request: Request
+    ) -> ResponseReturnValue:
+        assert request.method == "GET"
+
+        list_of_configs = [
+            {
+                "uid": config_object.get_uid(),
+                "description": config_object.get_description(),
+            }
+            for config_object in folder.load_all()
+        ]
+
+        return json.dumps({"results": list_of_configs}), 200
+
+    # Websocket part:
+    @socketio.on("connect")
+    def handle_connect() -> None:
+        socketio.start_background_task(target=send_data)
+        print("WebSocket-Client verbunden!")
+
+    @socketio.on("disconnect")
+    def handle_disconnect() -> None:
+        print("WebSocket-Client getrennt!")
+
+    def send_data() -> None:
+        while True:
+            snapshot = ControllerStateWsData.from_state(controller.state)
+            socketio.emit(
+                "pcrdata",
+                {"data": snapshot.to_json()},
+            )
+            socketio.sleep(1)
+
+    return app, socketio
