@@ -1,183 +1,96 @@
+import sched
 import time
-from datetime import datetime, timedelta  # noqa: F401
+from collections.abc import Callable
+from datetime import datetime, timedelta
 from threading import Thread
-from typing import Callable  # noqa: UP035
 
-import attrs
-
-from prcontrol.controller.common import LedLane, LedState
+from prcontrol.controller.common import LedLane, LedPosition, LedSide
 from prcontrol.controller.configuration import (
     EventPair,
     Experiment,
     ExperimentTemplate,
-    JSONSeriablizable,
     MeasuredDataAtTimePoint,
 )
+from prcontrol.controller.controller import Controller
 
 
-class Timer:  # noqa: F811
-    callback_sample: Callable[[None], None]
-    callback_led_front: Callable[[None], None]
-    callback_led_back: Callable[[None], None]
-    callback_measure: Callable[[None], None]
-    measure_interval: float
-
+class Timer:
+    callback: Callable[[], None]
     thread: Thread
-
-    datetime_start: datetime
-
-    datetime_led_front: datetime
-    datetime_led_back: datetime
-    datetime_next_sample: datetime
-
-    time_led_front_set: bool
-    time_led_back_set: bool
-    time_next_sample_set: bool
-
-    time_remaining_led_front: timedelta
-    time_remaining_led_back: timedelta
-    time_remaining_next_sample: timedelta
-
-    running: bool
+    datetime_end: datetime
+    time_remaining: timedelta
     paused: bool
 
     def __init__(
         self,
-        callback_sample: Callable[[None], None],
-        callback_led_front: Callable[[None], None],
-        callback_led_back: Callable[[None], None],
-        callback_measure: Callable[[None], None],
-        measure_interval: float,
-    ):  # noqa: E501
-        self.callback_sample = callback_sample
-        self.callback_led_front = callback_led_front
-        self.callback_led_back = callback_led_back
-        self.callback_measure = callback_measure
-        self.measure_interval = measure_interval
+        callback: Callable[[], None],
+    ):
+        self.callback = callback
 
-        self.datetime_start = datetime.now()
-
-        self.datetime_led_front = datetime.now()
-        self.datetime_led_back = datetime.now()
-        self.datetime_next_sample = datetime.now()
-
-        self.time_led_front_set = False
-        self.time_led_back_set = False
-        self.time_next_sample_set = False
-
+    def set(self, timespan: float) -> None:
+        self.datetime_end = datetime.now() + timedelta(seconds=timespan)
         self.thread = Thread(target=self._check_time)
-
-    def next_sample_in(self, timespan: float):
-        current_time = datetime.now()
-        delta = datetime.timedelta(seconds=timespan)
-        self.datetime_next_sample = current_time + delta
-        self.time_led_front_set = True
-
-    def led_front_time(self, timespan: float):
-        current_time = datetime.now()
-        delta = datetime.timedelta(seconds=timespan)
-        self.datetime_led_front = current_time + delta
-        self.time_led_front_set = True
-
-    def led_back_time(self, timespan: float):
-        current_time = datetime.now()
-        delta = datetime.timedelta(seconds=timespan)
-        self.datetime_led_back = current_time + delta
-        self.time_led_back_set = True
-
-    def start(self):
-        self.datetime_start = datetime.now()
-        self.running = True
         self.thread.start()
 
-    def stop(self):
-        self.running = False
-        # self.thread.join() # TODO is probably called within the same thread
-
-    def time_since_start(self) -> float:
-        current_time = datetime.now()
-        delta = current_time - self.datetime_start
-        return delta.total_seconds()
-
-    def pause(self):
-        current_time = datetime.now()
-        self.time_remaining_led_front = self.datetime_led_front - current_time
-        self.time_remaining_led_back = self.datetime_led_back - current_time
-        self.time_remaining_next_sample = (
-            self.datetime_next_sample - current_time
-        )
-
+    def pause(self) -> None:
+        self.time_remaining = self.datetime_end - datetime.now()
         self.paused = True
 
-    def resume(self):
-        current_time = datetime.now()
-        self.datetime_led_front = current_time + self.time_remaining_led_front
-        self.datetime_led_back = current_time + self.time_remaining_led_back
-        self.datetime_next_sample = (
-            current_time + self.time_remaining_next_sample
-        )
-
+    def resume(self) -> None:
+        self.datetime_end = datetime.now() + self.time_remaining
         self.paused = False
 
-    def reset(self):
-        self.time_led_front_set = False
-        self.time_led_back_set = False
-        self.time_next_sample_set = False
-
-    def _check_time(self):
-        while self.running:
-            if not self.paused:
-                self.callback_measure()
-                current_time = datetime.now()
-                if (
-                    self.time_next_sample_set
-                    and current_time > self.datetime_next_sample
-                ):
-                    self.time_next_sample_set = False
-                    self.callback_sample()
-                if (
-                    self.time_led_front_set
-                    and current_time > self.datetime_led_front
-                ):
-                    self.time_led_front_set = False
-                    self.callback_led_front()
-                if (
-                    self.time_led_back_set
-                    and current_time > self.datetime_led_back
-                ):
-                    self.time_led_back_set = False
-                    self.callback_led_back()
+    def _check_time(self) -> None:
+        while True:
+            if not self.paused and datetime.now() > self.datetime_end:
+                self.callback()
+                break
             time.sleep(1)
 
 
-@attrs.frozen(slots=True)
-class MeasuredData(JSONSeriablizable):
-    temperature_thermocouple: float
-    ambient_temp_strombox: float
-    ambient_temp_photobox: float
-    voltage_lane1: float
-    current_lane1: float
-    ir_temp_lane1: float
-    voltage_lane2: float
-    current_lane2: float
-    ir_temp_lane2: float
-    voltage_lane3: float
-    current_lane3: float
-    ir_temp_lane3: float
-    uv_index: float
-    ambient_light: float
+class MeasurementScheduler:
+    callback: Callable[[], None]
+    interval: float
+    thread: Thread
+    running: bool
+    scheduler: sched.scheduler
+
+    def __init__(self, callback: Callable[[], None], interval: float):
+        self.callback = callback
+        self.interval = interval
+
+    def start(self) -> None:
+        self.thread = Thread(target=self._measure)
+        self.running = True
+        self.thread.start()
+
+    def _measure(self) -> None:
+        while self.running:
+            self.callback()
+            time.sleep(self.interval)
+
+    def stop(self) -> None:
+        self.running = False
 
 
 class ExperimentRunner:
-    timer: Timer
-    template: ExperimentTemplate  # Nullable
+    controller: Controller
 
+    # State of current Experiment
     state_sample: int
     state_led_front: bool
     state_led_back: bool
     is_running: bool
     needs_sample: bool
 
+    # Timers for current experiment
+    _timer_sample: Timer
+    _timer_led_front: Timer
+    _timer_led_back: Timer
+    _scheduler: MeasurementScheduler
+
+    # Data of current experiment
+    _template: ExperimentTemplate
     _measurements: list[MeasuredDataAtTimePoint]
     _events: list[EventPair]
     _canceled: bool
@@ -186,58 +99,23 @@ class ExperimentRunner:
     _date: str
     _lane: LedLane
     _uid: int
+    _start_time: datetime
 
-    set_intensity_front: Callable[[int], None]
-    set_intensity_back: Callable[[int], None]
-    end_experiment: Callable[[Experiment], None]
-    update_led_front: Callable[[LedState], None]
-    update_led_back: Callable[[LedState], None]
-    measure: Callable[[None], MeasuredData]
-    take_sample: Callable[[None], None]
+    def __init__(self, lane: LedLane, controller: Controller):
+        self.controller = controller
 
-    def __init__(
-        self,
-        lane: LedLane,
-        measureIntervall: int,
-        set_intensity_front: Callable[[int], None],
-        set_intensity_back: Callable[[int], None],
-        end_experiment: Callable[[Experiment], None],
-        update_led_front: Callable[[LedState], None],
-        update_led_back: Callable[[LedState], None],
-        measure: Callable[[None], MeasuredData],
-        take_sample: Callable[[None], None],
-    ):
-        self.timer = Timer(
-            self._sample,
-            self._led_front,
-            self._led_back,
-            self._measure,
-            measureIntervall,
-        )
+        # Init Public fields
         self.is_running = False
         self.state_sample = 0
         self.state_led_back = False
         self.state_led_front = False
         self.needs_sample = False
-        self._measurements = []
-        self._events = []
-        self._neighbours = []
-        self._canceled = False
-        self._error = False
-        self._date = ""
-        self._lane = lane
-        self._uid = 0
-        self.set_intensity_front = set_intensity_front
-        self.set_intensity_back = set_intensity_back
-        self.end_experiment = end_experiment
-        self.update_led_front = update_led_front
-        self.update_led_back = update_led_back
-        self.measure = measure
-        self.take_sample = take_sample
 
     # Public routines
 
-    def start_experiment(self, template: ExperimentTemplate, uid: int):
+    def start_experiment(
+        self, template: ExperimentTemplate, uid: int, measure_intervall: float
+    ) -> None:
         # Setup state
         self.state_sample = 0
         self.state_led_back = True
@@ -246,7 +124,7 @@ class ExperimentRunner:
         self.needs_sample = False
 
         # Setup data collection
-        self.template = template
+        self._template = template
         self._measurements = []
         self._events = []
         self._neighbours = []
@@ -254,344 +132,266 @@ class ExperimentRunner:
         self._error = False
         self._date = datetime.today().strftime("%Y-%m-%d")
         self._uid = uid
+        self._start_time = datetime.now()
 
-        # Setup Timer
-        self.timer.reset()
-        self.timer.led_back_time(self.template.led_back_exposure_time)
-        self.timer.led_front_time(self.template.led_front_exposure_time)
-        self.timer.next_sample_in(self.template.time_points_sample_taking[0])
-        self.timer.start()
+        # Setup Timers
+        self._timer_sample = Timer(self._sample)
+        self._timer_led_front = Timer(self._led_front_done)
+        self._timer_led_back = Timer(self._led_back_done)
+        self._timer_sample.set(self._template.time_points_sample_taking[0])
+        self._timer_led_front.set(self._template.led_front_exposure_time)
+        self._timer_led_front.set(self._template.led_back_exposure_time)
+        self._scheduler = MeasurementScheduler(self._measure, measure_intervall)
+        self._scheduler.start()
 
         # Start Exposure
-        self.set_intensity_back(self.template.led_back_intensity)
-        self.set_intensity_front(self.template.led_front_intensity)
-        self.update_led_back(LedState.HIGH)
-        self.update_led_front(LedState.HIGH)
-
-    def pause_experiment(self):
-        assert self.is_running
-        self.timer.pause()
-        self.update_led_back(LedState.LOW)
-        self.update_led_front(LedState.LOW)
-
-    def resume_experiment(self):
-        assert self.is_running
-        self.timer.resume()
-        self.update_led_back(LedState.HIGH)
-        self.update_led_front(LedState.HIGH)
-
-    def sample_was_taken(self):
-        assert self.is_running
-        assert self.needs_sample
-        self.needs_sample = False
-        timestamp = (
-            self.template.time_points_sample_taking[self.state_sample]
-            - self.template.time_points_sample_taking[self.state_sample - 1]
+        self.controller._power_box.activate_led(
+            LedPosition(self._lane, LedSide.FRONT),
+            self._template.led_back_intensity,
         )
-        self.timer.next_sample_in(timestamp)
-        self.resume_experiment()
+        self.controller._power_box.activate_led(
+            LedPosition(self._lane, LedSide.BACK),
+            self._template.led_back_intensity,
+        )
 
-    def add_event(self, event: str):
-        assert self.is_running
-        time = self.timer.time_since_start()
-        self._events.append(EventPair(time, event))
+        # Register Start
+        self.add_event("experiment was started")
 
-    def cancel(self):
-        assert self.is_running
-        self._canceled = True
-        self.update_led_back(LedState.LOW)
-        self.update_led_front(LedState.LOW)
-        self._finish_experiment()
+    def pause_experiment(self) -> None:
+        if self.is_running:
+            self.add_event("experiment was paused")
+            self._timer_sample.pause()
+            self._timer_led_back.pause()
+            self._timer_led_front.pause()
+            self.controller._power_box.deactivate_led(
+                LedPosition(self._lane, LedSide.FRONT)
+            )
+            self.controller._power_box.deactivate_led(
+                LedPosition(self._lane, LedSide.BACK)
+            )
 
-    def registerNeighbourExperiment(self, uid: int):
-        assert self.is_running
-        self._neighbours.append(uid)
+    def resume_experiment(self) -> None:
+        if self.is_running:
+            self.add_event("experiment was resumed")
+            self._timer_sample.resume()
+            self._timer_led_back.resume()
+            self._timer_led_front.resume()
+            self.controller._power_box.activate_led(
+                LedPosition(self._lane, LedSide.FRONT),
+                self._template.led_back_intensity,
+            )
+            self.controller._power_box.activate_led(
+                LedPosition(self._lane, LedSide.BACK),
+                self._template.led_back_intensity,
+            )
 
-    def register_error(self):
-        assert self.is_running
-        self._error = True
+    def sample_was_taken(self) -> None:
+        if self.is_running and self.needs_sample:
+            self.add_event("sample was taken")
+            if (
+                self.state_sample
+                == len(self._template.time_points_sample_taking)
+                and not self.state_led_back
+                and not self.state_led_front
+            ):
+                self._finish_experiment()
+            else:
+                self.needs_sample = False
+                timestamp = (
+                    self._template.time_points_sample_taking[self.state_sample]
+                    - self._template.time_points_sample_taking[
+                        self.state_sample - 1
+                    ]
+                )
+                self._timer_sample.set(timestamp)
+                self.resume_experiment()
+
+    def add_event(self, event: str) -> None:
+        if self.is_running:
+            time = (datetime.now() - self._start_time).total_seconds()
+            self._events.append(EventPair(time, event))
+
+    def cancel(self) -> None:
+        if self.is_running:
+            self.add_event("experiment was cancelled")
+            self._canceled = True
+            self.controller._power_box.deactivate_led(
+                LedPosition(self._lane, LedSide.FRONT)
+            )
+            self.controller._power_box.deactivate_led(
+                LedPosition(self._lane, LedSide.BACK)
+            )
+            self._finish_experiment()
+
+    def registerNeighbourExperiment(self, uid: int) -> None:
+        if self.is_running:
+            self.add_event("neighbour experiment started: " + str(uid))
+            self._neighbours.append(uid)
+
+    def register_error(self) -> None:
+        if self.is_running:
+            self._error = True
 
     # Private Routines
 
-    def _finish_experiment(self):
+    def _finish_experiment(self) -> None:
+        self.add_event("experiment was finished")
         self.is_running = False
-        self.timer.stop()
+        self._scheduler.stop()
         data = Experiment(
             uid=self._uid,
-            name=self.template.name,
+            name=self._template.name,
             lab_notebook_entry="",  # Frontend
-            date=self.date,
-            config_file=self.template.config_file,
+            date=self._date,
+            config_file=self._template.config_file,
             active_lane=self._lane.demux(1, 2, 3),
-            led_front=self.template.led_front,
-            led_front_intensity=self.template.led_front_intensity,
-            led_front_distance_to_vial=self.template.led_front_distance_to_vial,
-            led_front_exposure_time=self.template.led_front_exposure_time,
-            led_back=self.template.led_back,
-            led_back_intensity=self.template.led_back_intensity,
-            led_back_distance_to_vial=self.template.led_back_distance_to_vial,
-            led_back_exposure_time=self.template.led_back_exposure_time,
-            time_points_sample_taking=self.template.time_points_sample_taking,
+            led_front=self._template.led_front,
+            led_front_intensity=self._template.led_front_intensity,
+            led_front_distance_to_vial=self._template.led_front_distance_to_vial,
+            led_front_exposure_time=self._template.led_front_exposure_time,
+            led_back=self._template.led_back,
+            led_back_intensity=self._template.led_back_intensity,
+            led_back_distance_to_vial=self._template.led_back_distance_to_vial,
+            led_back_exposure_time=self._template.led_back_exposure_time,
+            time_points_sample_taking=self._template.time_points_sample_taking,
             size_sample=0.0,  # Frontend
             parallel_experiments=tuple(self._neighbours),
-            position_thermocouple=self.template.position_thermocouple,
+            position_thermocouple=self._template.position_thermocouple,
             error_occured=self._error,
             experiment_cancelled=self._canceled,
             event_log=tuple(self._events),
             measured_data=tuple(self._measurements),
         )
-        self.end_experiment(data)
+        self.controller.end_experiment(self._lane, data)
 
     # Callbacks from timer
 
-    def _sample(self):
+    def _sample(self) -> None:
+        self.add_event("need to take sample")
         self.needs_sample = True
         self.pause_experiment()
-        self.take_sample()
+        self.controller.alert_take_sample(self._lane)
         self.state_sample += 1
-        if (
-            self.state_sample == len(self.template.time_points_sample_taking)
-            and not self.state_led_back
-            and not self.state_led_front
-        ):
-            self._finish_experiment()
 
-    def _led_front_done(self):
-        self.update_led_front(LedState.LOW)
+    def _led_front_done(self) -> None:
+        self.controller._power_box.deactivate_led(
+            LedPosition(self._lane, LedSide.FRONT)
+        )
         self.state_led_front = False
         if not self.state_led_back and self.state_sample == len(
-            self.template.time_points_sample_taking
+            self._template.time_points_sample_taking
         ):
             self._finish_experiment()
 
-    def _led_back_done(self):
-        self.update_led_back(LedState.LOW)
+    def _led_back_done(self) -> None:
+        self.controller._power_box.deactivate_led(
+            LedPosition(self._lane, LedSide.BACK)
+        )
         self.state_led_back = False
         if not self.state_led_front and self.state_sample == len(
-            self.template.time_points_sample_taking
+            self._template.time_points_sample_taking
         ):
             self._finish_experiment()
 
-    def _measure(self):
-        data = self.measure()
-        time = self.timer.time_since_start()
+    def _measure(self) -> None:
+        data = self.controller.state
+        time = (datetime.now() - self._start_time).total_seconds()
         self._measurements.append(
             MeasuredDataAtTimePoint(
                 timepoint=time,
-                temperature_thermocouple=data.temperature_thermocouple,
-                ambient_temp_strombox=data.ambient_temp_strombox,
-                ambient_temp_photobox=data.ambient_temp_photobox,
-                voltage_lane1=data.voltage_lane1,
-                voltage_lane2=data.voltage_lane2,
-                voltage_lane3=data.voltage_lane3,
-                current_lane1=data.current_lane1,
-                current_lane2=data.current_lane2,
-                current_lane3=data.current_lane3,
-                ir_temp_lane1=data.ir_temp_lane1,
-                ir_temp_lane2=data.ir_temp_lane2,
-                ir_temp_lane3=data.ir_temp_lane3,
-                uv_index=data.uv_index,
-                ambient_light=data.ambient_light,
+                temperature_thermocouple=data.reactor_box_state.thermocouble_temp.celsius,
+                ambient_temp_strombox=data.power_box_state.abmient_temperature.celsius,
+                ambient_temp_photobox=data.reactor_box_state.ambient_temperature.celsius,
+                voltage_lane1=(
+                    (
+                        data.power_box_state.voltage_lane_1_back.milli_volts
+                        + data.power_box_state.voltage_lane_1_front.milli_volts
+                    )
+                    / 2
+                ),
+                voltage_lane2=(
+                    (
+                        data.power_box_state.voltage_lane_2_back.milli_volts
+                        + data.power_box_state.voltage_lane_2_front.milli_volts
+                    )
+                    / 2
+                ),
+                voltage_lane3=(
+                    (
+                        data.power_box_state.voltage_lane_3_back.milli_volts
+                        + data.power_box_state.voltage_lane_3_front.milli_volts
+                    )
+                    / 2
+                ),
+                current_lane1=(
+                    (
+                        data.power_box_state.current_lane_1_back.milli_amps
+                        + data.power_box_state.current_lane_1_front.milli_amps
+                    )
+                    / 2
+                ),
+                current_lane2=(
+                    (
+                        data.power_box_state.current_lane_2_back.milli_amps
+                        + data.power_box_state.current_lane_2_front.milli_amps
+                    )
+                    / 2
+                ),
+                current_lane3=(
+                    (
+                        data.power_box_state.current_lane_3_back.milli_amps
+                        + data.power_box_state.current_lane_3_front.milli_amps
+                    )
+                    / 2
+                ),
+                ir_temp_lane1=data.reactor_box_state.lane_1_ir_temp.celsius,
+                ir_temp_lane2=data.reactor_box_state.lane_2_ir_temp.celsius,
+                ir_temp_lane3=data.reactor_box_state.lane_3_ir_temp.celsius,
+                uv_index=data.reactor_box_state.uv_index.uvi,
+                ambient_light=data.reactor_box_state.ambient_light.hudreth_lux,
             )
         )
 
 
 class ExperimentSupervisor:
-    runner_1: ExperimentRunner
-    runner_2: ExperimentRunner
-    runner_3: ExperimentRunner
+    runner: list[ExperimentRunner]
 
-    # Callbacks for Controller
-    measure: Callable[[None], MeasuredData]
-    set_intensity_front: Callable[[LedLane, int], None]
-    set_intensity_back: Callable[[LedLane, int], None]
-    update_led_front: Callable[[LedLane, LedState], None]
-    update_led_back: Callable[[LedLane, LedState], None]
-    end_experiment: Callable[[LedLane, Experiment], None]
-    take_sample: Callable[[LedLane, None], None]
-
-    def __init__(
-        self,
-        measure: Callable[[None], MeasuredData],
-        set_intensity_front: Callable[[LedLane, int], None],
-        set_intensity_back: Callable[[LedLane, int], None],
-        update_led_front: Callable[[LedLane, LedState], None],
-        update_led_back: Callable[[LedLane, LedState], None],
-        end_experiment: Callable[[LedLane, Experiment], None],
-        take_sample: Callable[[LedLane, None], None],
-    ):
-        self.measure = measure
-        self.set_intensity_back = set_intensity_back
-        self.set_intensity_front = set_intensity_front
-        self.update_led_back = update_led_back
-        self.update_led_front = update_led_front
-        self.take_sample = take_sample
-        self.end_experiment = end_experiment
-        self.runner_1 = ExperimentRunner(
-            lane=LedLane.LANE_1,
-            measureIntervall=1,
-            set_intensity_front=self._set_intensity_front_1,
-            set_intensity_back=self._set_intensity_back_1,
-            end_experiment=self._end_experiment_1,
-            update_led_front=self._update_led_front_1,
-            update_led_back=self._update_led_back_1,
-            measure=self.measure,
-            take_sample=self._take_sample_1,
-        )
-        self.runner_2 = ExperimentRunner(
-            lane=LedLane.LANE_2,
-            measureIntervall=1,
-            set_intensity_front=self._set_intensity_front_2,
-            set_intensity_back=self._set_intensity_back_2,
-            end_experiment=self._end_experiment_2,
-            update_led_front=self._update_led_front_2,
-            update_led_back=self._update_led_back_2,
-            measure=self.measure,
-            take_sample=self._take_sample_2,
-        )
-        self.runner_3 = ExperimentRunner(
-            lane=LedLane.LANE_3,
-            measureIntervall=1,
-            set_intensity_front=self._set_intensity_front_3,
-            set_intensity_back=self._set_intensity_back_3,
-            end_experiment=self._end_experiment_3,
-            update_led_front=self._update_led_front_3,
-            update_led_back=self._update_led_back_3,
-            measure=self.measure,
-            take_sample=self._take_sample_3,
-        )
+    def __init__(self, controller: Controller):
+        self.runner = []
+        self.runner.append(ExperimentRunner(LedLane.LANE_1, controller))
+        self.runner.append(ExperimentRunner(LedLane.LANE_2, controller))
+        self.runner.append(ExperimentRunner(LedLane.LANE_3, controller))
 
     # Public Methods for Controller
 
     def start_experiment_on(
-        self, lane: LedLane, template: ExperimentTemplate, uid: int
-    ):
-        match lane:
-            case LedLane.LANE_1:
-                self.runner_1.start_experiment(template, uid)
-            case LedLane.LANE_2:
-                self.runner_2.start_experiment(template, uid)
-            case LedLane.LANE_3:
-                self.runner_3.start_experiment(template, uid)
+        self,
+        lane: LedLane,
+        template: ExperimentTemplate,
+        uid: int,
+        measure_interval: float,
+    ) -> None:
+        self.runner[lane.demux(0, 1, 2)].start_experiment(
+            template, uid, measure_interval
+        )
 
-        if self.runner_1.is_running:
-            self.runner_1.registerNeighbourExperiment(uid)
-        if self.runner_2.is_running:
-            self.runner_2.registerNeighbourExperiment(uid)
-        if self.runner_3.is_running:
-            self.runner_3.registerNeighbourExperiment(uid)
+        for r in self.runner:
+            r.registerNeighbourExperiment(uid)
 
-    def pause_experiment_on(self, lane: LedLane):
-        match lane:
-            case LedLane.LANE_1:
-                self.runner_1.pause_experiment()
-            case LedLane.LANE_2:
-                self.runner_2.pause_experiment()
-            case LedLane.LANE_3:
-                self.runner_3.pause_experiment()
+    def pause_experiment_on(self, lane: LedLane) -> None:
+        self.runner[lane.demux(0, 1, 2)].pause_experiment()
 
-    def resume_experiment_on(self, lane: LedLane):
-        match lane:
-            case LedLane.LANE_1:
-                self.runner_1.resume_experiment()
-            case LedLane.LANE_2:
-                self.runner_2.resume_experiment()
-            case LedLane.LANE_3:
-                self.runner_3.resume_experiment()
+    def resume_experiment_on(self, lane: LedLane) -> None:
+        self.runner[lane.demux(0, 1, 2)].resume_experiment()
 
-    def cancel_experiment_on(self, lane: LedLane):
-        match lane:
-            case LedLane.LANE_1:
-                self.runner_1.cancel()
-            case LedLane.LANE_2:
-                self.runner_2.cancel()
-            case LedLane.LANE_3:
-                self.runner_3.cancel()
+    def cancel_experiment_on(self, lane: LedLane) -> None:
+        self.runner[lane.demux(0, 1, 2)].cancel()
 
-    def sample_was_taken_on(self, lane: LedLane):
-        match lane:
-            case LedLane.LANE_1:
-                self.runner_1.sample_was_taken()
-            case LedLane.LANE_2:
-                self.runner_2.sample_was_taken()
-            case LedLane.LANE_3:
-                self.runner_3.sample_was_taken()
+    def sample_was_taken_on(self, lane: LedLane) -> None:
+        self.runner[lane.demux(0, 1, 2)].sample_was_taken()
 
-    def add_event_on(self, lane: LedLane, event: str):
-        match lane:
-            case LedLane.LANE_1:
-                self.runner_1.add_event(event)
-            case LedLane.LANE_2:
-                self.runner_2.add_event(event)
-            case LedLane.LANE_3:
-                self.runner_3.add_event(event)
+    def add_event_on(self, lane: LedLane, event: str) -> None:
+        self.runner[lane.demux(0, 1, 2)].add_event(event)
 
-    def register_error_on(self, lane: LedLane):
-        match lane:
-            case LedLane.LANE_1:
-                self.runner_1.register_error()
-            case LedLane.LANE_2:
-                self.runner_2.register_error()
-            case LedLane.LANE_3:
-                self.runner_3.register_error()
-
-    # Route Callbacks from runners
-    # Lane 1
-
-    def _set_intensity_front_1(self, intensity: int):
-        self.set_intensity_front(LedLane.LANE_1, intensity)
-
-    def _set_intensity_back_1(self, intensity: int):
-        self.set_intensity_back(LedLane.LANE_1, intensity)
-
-    def _update_led_front_1(self, new_state: LedState):
-        self.update_led_front(LedLane.LANE_1, new_state)
-
-    def _update_led_back_1(self, new_state: LedState):
-        self.update_led_back(LedLane.LANE_1, new_state)
-
-    def _take_sample_1(self):
-        self.take_sample(LedLane.LANE_1)
-
-    def _end_experiment_1(self, data: Experiment):
-        self.end_experiment(LedLane.LANE_1, data)
-
-    # Lane 2
-
-    def _set_intensity_front_2(self, intensity: int):
-        self.set_intensity_front(LedLane.LANE_2, intensity)
-
-    def _set_intensity_back_2(self, intensity: int):
-        self.set_intensity_back(LedLane.LANE_2, intensity)
-
-    def _update_led_front_2(self, new_state: LedState):
-        self.update_led_front(LedLane.LANE_2, new_state)
-
-    def _update_led_back_2(self, new_state: LedState):
-        self.update_led_back(LedLane.LANE_2, new_state)
-
-    def _take_sample_2(self):
-        self.take_sample(LedLane.LANE_2)
-
-    def _end_experiment_2(self, data: Experiment):
-        self.end_experiment(LedLane.LANE_2, data)
-
-    # Lane 3
-
-    def _set_intensity_front_3(self, intensity: int):
-        self.set_intensity_front(LedLane.LANE_3, intensity)
-
-    def _set_intensity_back_3(self, intensity: int):
-        self.set_intensity_back(LedLane.LANE_3, intensity)
-
-    def _update_led_front_3(self, new_state: LedState):
-        self.update_led_front(LedLane.LANE_3, new_state)
-
-    def _update_led_back_3(self, new_state: LedState):
-        self.update_led_back(LedLane.LANE_3, new_state)
-
-    def _take_sample_3(self):
-        self.take_sample(LedLane.LANE_3)
-
-    def _end_experiment_3(self, data: Experiment):
-        self.end_experiment(LedLane.LANE_3, data)
+    def register_error_on(self, lane: LedLane) -> None:
+        self.runner[lane.demux(0, 1, 2)].register_error()
