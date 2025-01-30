@@ -16,5 +16,5 @@ logging.getLogger().addHandler(stderr_handler)
 logger = logging.getLogger(__name__)
 if __name__ == "__main__":
     logger.info("Starting...")
-    app, socketio = create_app()
+    app, socketio, _ = create_app()
     socketio.run(app, debug=True, host="0.0.0.0", allow_unsafe_werkzeug=True)

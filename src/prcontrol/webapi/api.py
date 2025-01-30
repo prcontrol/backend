@@ -13,13 +13,16 @@ from prcontrol.controller.controller import (
     ControllerConfig,
 )
 from prcontrol.controller.state_snapshots import ControllerStateWsData
-from prcontrol.webapi.endpoints import POWER_BOX_ENDPOINT, REACTOR_BOX_ENDPOINT
+from prcontrol.webapi.endpoints import (
+    get_power_box_endpoint,
+    get_reactor_box_endpoint,
+)
 
 config_manager: ConfigManager
 controller: Controller
 
 
-def create_app() -> tuple[Flask, SocketIO]:
+def create_app(mock=False) -> tuple[Flask, SocketIO, ConfigManager]:
     global config_manager, controller
     app = Flask(__name__)
     CORS(app)
@@ -28,13 +31,17 @@ def create_app() -> tuple[Flask, SocketIO]:
     config_manager = ConfigManager()
 
     controller = Controller(
-        reactor_box=REACTOR_BOX_ENDPOINT,
-        power_box=POWER_BOX_ENDPOINT,
+        reactor_box=get_reactor_box_endpoint()
+        if not mock
+        else ("111.111.111.111", 1234),
+        power_box=get_power_box_endpoint()
+        if not mock
+        else ("111.111.111.111", 1337),
         config=ControllerConfig.default_values(),
     )
 
     connection_exceptions = []
-    for _ in range(10):
+    for _ in range(10 if not mock else 0):
         try:
             controller.connect()
         except Exception as e:
@@ -168,4 +175,4 @@ def create_app() -> tuple[Flask, SocketIO]:
             )
             socketio.sleep(1)
 
-    return app, socketio
+    return app, socketio, config_manager
