@@ -22,7 +22,7 @@ config_manager: ConfigManager
 controller: Controller
 
 
-def create_app(mock=False) -> tuple[Flask, SocketIO, ConfigManager]:
+def create_app(mock: bool = False) -> tuple[Flask, SocketIO, ConfigManager]:
     global config_manager, controller
     app = Flask(__name__)
     CORS(app)
