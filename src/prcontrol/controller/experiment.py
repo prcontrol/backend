@@ -29,19 +29,22 @@ class Timer:
         callback: Callable[[], None],
     ):
         self.callback = callback
+        self.thread = Thread(target=self._check_time)
 
     def set(self, timespan: float) -> None:
         self.datetime_end = datetime.now() + timedelta(seconds=timespan)
-        self.thread = Thread(target=self._check_time)
         self.thread.start()
+        self.paused = False
 
     def pause(self) -> None:
-        self.time_remaining = self.datetime_end - datetime.now()
-        self.paused = True
+        if not self.paused:
+            self.time_remaining = self.datetime_end - datetime.now()
+            self.paused = True
 
     def resume(self) -> None:
-        self.datetime_end = datetime.now() + self.time_remaining
-        self.paused = False
+        if self.paused:
+            self.datetime_end = datetime.now() + self.time_remaining
+            self.paused = False
 
     def _check_time(self) -> None:
         while True:
@@ -49,6 +52,7 @@ class Timer:
                 self.callback()
                 break
             time.sleep(1)
+
 
 
 class MeasurementScheduler:
