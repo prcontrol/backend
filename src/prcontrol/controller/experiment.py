@@ -3,6 +3,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from threading import Thread
+from typing import TYPE_CHECKING
 
 from prcontrol.controller.common import LedLane, LedPosition, LedSide
 from prcontrol.controller.configuration import (
@@ -11,7 +12,9 @@ from prcontrol.controller.configuration import (
     ExperimentTemplate,
     MeasuredDataAtTimePoint,
 )
-from prcontrol.controller.controller import Controller
+
+if TYPE_CHECKING:
+    from prcontrol.controller.controller import Controller
 
 
 class Timer:
@@ -74,7 +77,7 @@ class MeasurementScheduler:
 
 
 class ExperimentRunner:
-    controller: Controller
+    controller: "Controller"
 
     # State of current Experiment
     state_sample: int
@@ -101,7 +104,7 @@ class ExperimentRunner:
     _uid: int
     _start_time: datetime
 
-    def __init__(self, lane: LedLane, controller: Controller):
+    def __init__(self, lane: LedLane, controller: "Controller"):
         self.controller = controller
 
         # Init Public fields
@@ -356,13 +359,13 @@ class ExperimentRunner:
 class ExperimentSupervisor:
     runner: list[ExperimentRunner]
 
-    def __init__(self, controller: Controller):
+    def __init__(self, controller: "Controller"):
         self.runner = []
         self.runner.append(ExperimentRunner(LedLane.LANE_1, controller))
         self.runner.append(ExperimentRunner(LedLane.LANE_2, controller))
         self.runner.append(ExperimentRunner(LedLane.LANE_3, controller))
 
-    # Public Methods for Controller
+    # Public Methods for "Controller"
 
     def start_experiment_on(
         self,
