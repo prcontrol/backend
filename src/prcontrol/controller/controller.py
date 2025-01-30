@@ -190,10 +190,6 @@ class Controller:
             config = ControllerConfig.default_values()
         self.config = config
 
-        self.state = ControllerState.default(
-            self._reactor_box.sensors, self._power_box.sensors
-        )
-
         self._voltage_errors = set()
 
         self._reactor_box_ipcon = IPConnection()
@@ -210,6 +206,10 @@ class Controller:
             PowerBoxBricklets(self._power_box_ipcon),
             self._dispatch_onchange_power_box,
             power_box_sensor_period_ms,
+        )
+
+        self.state = ControllerState.default(
+            self._reactor_box.sensors, self._power_box.sensors
         )
 
         self._power_box_ipcon.register_callback(
@@ -385,7 +385,7 @@ class Controller:
             old_sensors, new_sensors, attribute, value
         )
 
-    def _callback_reactor_box_connected(self) -> None:
+    def _callback_reactor_box_connected(self, *_: Any) -> None:
         self.state.reactor_box_connected = True
         # TODO: can initilize can be called twice without creating a bug??
         #   we should probably implement this in ReactorBox though....
@@ -393,12 +393,12 @@ class Controller:
         self._reactor_box.initialize()
         self._set_connected_led()
 
-    def _callback_reactor_box_disconnected(self) -> None:
+    def _callback_reactor_box_disconnected(self, *_: Any) -> None:
         logger.info("Disconnected from reactor box!")
         self.state.reactor_box_connected = False
         self._set_connected_led()
 
-    def _callback_power_box_connected(self) -> None:
+    def _callback_power_box_connected(self, *_: Any) -> None:
         self.state.power_box_connected = True
         # TODO can initilize can be called twice without creating a bug?
         #   see above....
@@ -406,7 +406,7 @@ class Controller:
         self._power_box.initialize()
         self._set_connected_led()
 
-    def _callback_power_box_disconnected(self) -> None:
+    def _callback_power_box_disconnected(self, *_: Any) -> None:
         logger.info("Disconnected from power box!")
         self.state.power_box_connected = False
         self._set_connected_led()
@@ -443,13 +443,14 @@ class Controller:
         """
         # TODO implement this. Also implement _observer_sample_taken
         #   which signals when the sample taken button is pressed.
-        raise NotImplementedError("TODO")  # TODO implement this.
+        return self  # TODO implement this.
 
     def end_experiment(self, lane: LedLane, data: Experiment) -> None:
         print("Experiment done, here is the data:")
         print(data.to_json())
         print("This was only for Debug, Programm will crash now....")
         raise NotImplementedError()  # Call Frontend and config_manager
+
 
     def reset_ambient_temp_warning(self) -> Self:
         self.state.ambient_temp_status = ThresholdStatus.OK
@@ -497,7 +498,7 @@ class Controller:
         correct: bool,
     ) -> None:
         # Not sure what to do here tbh...
-        raise NotImplementedError("TODO")  # TODO implement this.
+        return  # TODO implement this.
 
     def _observer_maintenance(
         self,
@@ -524,6 +525,7 @@ class Controller:
         abgebrochen werden.
         """
         if not detected:
+            self._power_box.io_panel.led_warning_water = LedState.LOW
             return
         logger.warning(f"WATER DETECTED!!!!! Current state: {_new_state}")
         self._add_event_on_all_lanes("Water leakage detected")
@@ -532,11 +534,12 @@ class Controller:
 
     def _observer_voltage_error(
         self,
-        led: LedPosition,
         _old_state: PowerBoxSensorState,
         _new_state: PowerBoxSensorState,
         _attribute: "attrs.Attribute[Any]",
         voltage: Voltage,
+        /,
+        led: LedPosition,
     ) -> None:
         """
         Wenn laut Software eine LED an einer Position sein soll, für diese
@@ -564,11 +567,12 @@ class Controller:
 
     def _observer_ir_temp_lane(
         self,
-        lane: LedLane,
         _old_state: ReactorBoxSensorState,
         _new_state: ReactorBoxSensorState,
         _attribute: "attrs.Attribute[Any]",
         temp: Temperature,
+        /,
+        lane: LedLane,
     ) -> None:
         """
         Standartmäßig leuchtet die grüne LED (B1/2/3 PhotoBox = high)
@@ -650,15 +654,17 @@ class Controller:
         correct: bool,
     ) -> None:
         # Not sure what to do here tbh...
+        return
         raise NotImplementedError("TODO")  # TODO implement this.
 
     def _observer_sample_taken(
         self,
-        lane: LedLane,
         _old_state: ReactorBoxSensorState,
         _new_state: ReactorBoxSensorState,
         _attribute: "attrs.Attribute[Any]",
         taken: bool,
+        /,
+        lane: LedLane,
     ) -> None:
         """
         Wurde im Experiment hinterlegt, dass nach einem Zeitraum X eine
@@ -671,7 +677,7 @@ class Controller:
         LED schnell blinken (250 ms an / 250 ms aus).
         """
         self.experiment_supervisor.sample_was_taken_on(lane)
-        raise NotImplementedError("TODO")  # TODO implement this.
+        return  # TODO implement this.
 
     def _observer_uv_sensor(
         self,
@@ -687,7 +693,7 @@ class Controller:
         (A7 PhotoBox → low), sollte der Wert danach wieder unter den
         hinterlegten Wert fallen soll wieder auf grün geschaltet werden.
         """
-        raise NotImplementedError("TODO")  # TODO implement this.
+        return  # TODO implement this.
 
     def _observer_ambient_temp(
         self,
@@ -762,4 +768,4 @@ class Controller:
         soll hinterlegbar sein, ob ein (bestimmtes) Experiment abgebrochen
         werden soll, sollte der Temperatur-Wert überschritten werden.
         """
-        raise NotImplementedError("TODO")  # TODO implement this.
+        return  # TODO implement this.
