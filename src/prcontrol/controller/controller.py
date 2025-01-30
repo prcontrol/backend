@@ -12,7 +12,8 @@ from attrs import define, field, frozen, setters
 from tinkerforge.ip_connection import IPConnection
 
 from prcontrol.controller.common import LedLane, LedPosition, LedSide, LedState
-from prcontrol.controller.configuration import ExperimentTemplate
+from prcontrol.controller.configuration import Experiment
+from prcontrol.controller.experiment import ExperimentSupervisor
 from prcontrol.controller.measurements import Temperature, UvIndex, Voltage
 from prcontrol.controller.power_box import (
     CaseLidState,
@@ -150,6 +151,8 @@ class Controller:
 
     config: ControllerConfig
 
+    experiment_supervisor: ExperimentSupervisor
+
     # These are used to specify the callback handlers for changes in
     # both ReactorBoxSensorState and PowerBoxSensorState.
     # The observers receive
@@ -249,13 +252,13 @@ class Controller:
             ),
             reactor_sensors.uv_index: self._observer_uv_sensor,
             reactor_sensors.lane_1_sample_taken: partial(
-                self._oberserver_sample_taken, lane=LedLane.LANE_1
+                self._observer_sample_taken, lane=LedLane.LANE_1
             ),
             reactor_sensors.lane_2_sample_taken: partial(
-                self._oberserver_sample_taken, lane=LedLane.LANE_2
+                self._observer_sample_taken, lane=LedLane.LANE_2
             ),
             reactor_sensors.lane_3_sample_taken: partial(
-                self._oberserver_sample_taken, lane=LedLane.LANE_3
+                self._observer_sample_taken, lane=LedLane.LANE_3
             ),
             reactor_sensors.maintenance_mode: self._observer_maintenance,
             reactor_sensors.cable_control: self._observer_reactor_box_cable,
@@ -319,6 +322,8 @@ class Controller:
             "There are fields in PowerBoxSensorStates that dont have a " \
             "callback handler in Controller! Pls fix!"
         # fmt: on
+
+        self.experiment_supervisor = ExperimentSupervisor(self)
         logger.debug("Initializing Controller done.")
 
     def connect(self) -> Self:  # ToDo: Catch Exceptions
@@ -340,6 +345,19 @@ class Controller:
         self._reactor_box_ipcon.disconnect()
         self._power_box_ipcon.disconnect()
         return self
+
+    def _add_event_on_all_lanes(self, event_str: str) -> None:
+        self.experiment_supervisor.add_event_on(LedLane.LANE_1, event_str)
+        self.experiment_supervisor.add_event_on(LedLane.LANE_2, event_str)
+        self.experiment_supervisor.add_event_on(LedLane.LANE_3, event_str)
+
+    def _cancel_all_experiments(self) -> None:
+        self.experiment_supervisor.register_error_on(LedLane.LANE_1)
+        self.experiment_supervisor.register_error_on(LedLane.LANE_2)
+        self.experiment_supervisor.register_error_on(LedLane.LANE_3)
+        self.experiment_supervisor.cancel_experiment_on(LedLane.LANE_1)
+        self.experiment_supervisor.cancel_experiment_on(LedLane.LANE_2)
+        self.experiment_supervisor.cancel_experiment_on(LedLane.LANE_3)
 
     def _dispatch_onchange_reactor_box(
         self,
@@ -427,38 +445,12 @@ class Controller:
         #   which signals when the sample taken button is pressed.
         return self  # TODO implement this.
 
-    def start_experiment(self, lane: LedLane) -> Self:
-        # TODO also dont forget to set/unset running led here!
-        return self  # TODO implement this.
+    def end_experiment(self, lane: LedLane, data: Experiment) -> None:
+        print("Experiment done, here is the data:")
+        print(data.to_json())
+        print("This was only for Debug, Programm will crash now....")
+        raise NotImplementedError()  # Call Frontend and config_manager
 
-    def end_experiment(self, lane: LedLane) -> Self:
-        # TODO also dont forget to set/unset running led here!
-        return self  # TODO implement this.
-
-    def set_experiment_configuration(
-        self, lane: LedLane, config: ExperimentTemplate
-    ) -> Self:
-        # I think this is necessary so control led intensity. Dont
-        # think its worth to create another configuration struct as
-        # ExperimentTemplate has all we need imo.
-        return self  # TODO implement this.
-
-    def abort_all_experiments(self, reason: None | str = None) -> Self:
-        logger.warning(
-            f"All experiments aborted! Reason: {reason}\n"
-            f"Current state is {self.state}!"
-        )
-        self.abort_experiment(LedLane.LANE_1)
-        self.abort_experiment(LedLane.LANE_2)
-        self.abort_experiment(LedLane.LANE_3)
-        return self
-
-    def abort_experiment(
-        self, lane: LedLane, reason: None | str = None
-    ) -> Self:
-        logger.warning(f"Abortin experiment on lane {lane} (reason: {reason})")
-        self.end_experiment(lane)
-        return self  # TODO implement this.
 
     def reset_ambient_temp_warning(self) -> Self:
         self.state.ambient_temp_status = ThresholdStatus.OK
@@ -536,7 +528,8 @@ class Controller:
             self._power_box.io_panel.led_warning_water = LedState.LOW
             return
         logger.warning(f"WATER DETECTED!!!!! Current state: {_new_state}")
-        self.abort_all_experiments("water leakage")
+        self._add_event_on_all_lanes("Water leakage detected")
+        self._cancel_all_experiments()
         self._power_box.io_panel.led_warning_water = LedState.BLINK_FAST
 
     def _observer_voltage_error(
@@ -558,6 +551,9 @@ class Controller:
         """
         if voltage.milli_volts == 0 and self._power_box.is_led_active(led):
             self._voltage_errors.add(led)
+            self.experiment_supervisor.add_event_on(led.lane, "Voltage Error")
+            self.experiment_supervisor.register_error_on(led.lane)
+            self.experiment_supervisor.cancel_experiment_on(led.lane)
         elif led in self._voltage_errors:
             self._voltage_errors.remove(led)
 
@@ -606,7 +602,11 @@ class Controller:
                 f"Threshold: {threshold_abort}, "
                 f"Temperature: {temp}"
             )
-            self.abort_experiment(lane, warning)
+            self.experiment_supervisor.add_event_on(
+                lane, "IR Temperature exceeded critical threshold"
+            )
+            self.experiment_supervisor.register_error_on(lane)
+            self.experiment_supervisor.cancel_experiment_on(lane)
             logger.warning(warning)
 
             new_status = ThresholdStatus.ABORT
@@ -615,8 +615,14 @@ class Controller:
                 f"IR temp in lane {lane} exceeded threshold. "
                 f"Threshold: {threshold_warn}, temp: {temp}"
             )
+            self.experiment_supervisor.add_event_on(
+                lane, "IR Temperature exceeded first threshold"
+            )
             new_status = ThresholdStatus.EXCEEDED
         elif old_status == ThresholdStatus.EXCEEDED:
+            self.experiment_supervisor.add_event_on(
+                lane, "IR Temperature back to normal"
+            )
             new_status = ThresholdStatus.OK_AGAIN
         else:
             new_status = old_status
@@ -651,7 +657,7 @@ class Controller:
         return
         raise NotImplementedError("TODO")  # TODO implement this.
 
-    def _oberserver_sample_taken(
+    def _observer_sample_taken(
         self,
         _old_state: ReactorBoxSensorState,
         _new_state: ReactorBoxSensorState,
@@ -670,6 +676,7 @@ class Controller:
         wurden zwei Spannungsfehler für eine Lane detektiert, soll die
         LED schnell blinken (250 ms an / 250 ms aus).
         """
+        self.experiment_supervisor.sample_was_taken_on(lane)
         return  # TODO implement this.
 
     def _observer_uv_sensor(
@@ -713,14 +720,21 @@ class Controller:
                 f"Threshold: {self.config.threshold_abort_ambient_temp}, "
                 f"Temperature: {temp}"
             )
-            self.abort_all_experiments(warning)
+            self._add_event_on_all_lanes(
+                "Ambient Temperature exceeded critical threshold"
+            )
+            self._cancel_all_experiments()
             logger.warning(warning)
-            self.state.ambient_temp_status = ThresholdStatus.EXCEEDED
+            self.state.ambient_temp_status = ThresholdStatus.ABORT
         elif temp > self.config.threshold_warn_ambient_temp:
             self.state.ambient_temp_status = ThresholdStatus.EXCEEDED
+            self._add_event_on_all_lanes(
+                "Ambient Temperature exceeded first threshold"
+            )
             logger.warning("High temperature ({temp})")
         elif self.state.ambient_temp_status == ThresholdStatus.EXCEEDED:
             self.state.ambient_temp_status = ThresholdStatus.OK_AGAIN
+            self._add_event_on_all_lanes("Ambient Temperature back to normal")
         # Otherwise we hold the state...
 
         # And set the LED accordingly
