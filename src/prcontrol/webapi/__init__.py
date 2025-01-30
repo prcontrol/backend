@@ -1,3 +1,1 @@
-__all__ = ["app"]
-
-from prcontrol.webapi.api import app
+__all__: list[str] = []

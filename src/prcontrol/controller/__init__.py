@@ -26,6 +26,10 @@ __all__ = [
     "ReactorBoxStatusLeds",
     #
     "Controller",
+    #
+    "ControllerStateWsData",
+    "PowerBoxWsData",
+    "ReactorBoxWsData",
 ]
 
 import prcontrol.controller.measurements as units
@@ -57,4 +61,9 @@ from prcontrol.controller.reactor_box import (
     ReactorBoxBricklets,
     ReactorBoxSensorState,
     ReactorBoxStatusLeds,
+)
+from prcontrol.controller.state_snapshots import (
+    ControllerStateWsData,
+    PowerBoxWsData,
+    ReactorBoxWsData,
 )
