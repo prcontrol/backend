@@ -326,7 +326,7 @@ class Controller:
         self.experiment_supervisor = ExperimentSupervisor(self)
         logger.debug("Initializing Controller done.")
 
-    def connect(self) -> Self:  # ToDo: Catch Exceptions
+    def connect(self) -> Self:
         logger.info("Connecting to reactorbox and powerbox.")
         self._reactor_box_ipcon.connect(
             self._reactor_box_endpoint.host, self._reactor_box_endpoint.port
@@ -390,8 +390,8 @@ class Controller:
         # TODO: can initilize can be called twice without creating a bug??
         #   we should probably implement this in ReactorBox though....
         logger.debug("Connection callback received from reactor box")
-        self._reactor_box.initialize()
-        self._set_connected_led()
+        # self._reactor_box.initialize()
+        # self._set_connected_led()
 
     def _callback_reactor_box_disconnected(self, *_: Any) -> None:
         logger.info("Disconnected from reactor box!")
@@ -403,8 +403,8 @@ class Controller:
         # TODO can initilize can be called twice without creating a bug?
         #   see above....
         logger.debug("Connection callback received from power box")
-        self._power_box.initialize()
-        self._set_connected_led()
+        # self._power_box.initialize()
+        # self._set_connected_led()
 
     def _callback_power_box_disconnected(self, *_: Any) -> None:
         logger.info("Disconnected from power box!")
@@ -450,7 +450,6 @@ class Controller:
         print(data.to_json())
         print("This was only for Debug, Programm will crash now....")
         raise NotImplementedError()  # Call Frontend and config_manager
-
 
     def reset_ambient_temp_warning(self) -> Self:
         self.state.ambient_temp_status = ThresholdStatus.OK

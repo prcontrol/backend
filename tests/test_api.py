@@ -3,7 +3,6 @@ import json
 
 import pytest
 
-from prcontrol.controller import config_manager
 from prcontrol.controller.config_manager import ConfigFolder, ConfigManager
 from prcontrol.controller.configuration import (
     LED,

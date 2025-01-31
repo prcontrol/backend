@@ -1,5 +1,5 @@
 import json
-import time
+from time import sleep
 from typing import Any
 
 from flask import Flask, Request, request
@@ -30,6 +30,7 @@ def create_app(mock: bool = False) -> tuple[Flask, SocketIO, ConfigManager]:
 
     config_manager = ConfigManager()
 
+    print(get_reactor_box_endpoint())
     controller = Controller(
         reactor_box=get_reactor_box_endpoint()
         if not mock
@@ -40,20 +41,13 @@ def create_app(mock: bool = False) -> tuple[Flask, SocketIO, ConfigManager]:
         config=ControllerConfig.default_values(),
     )
 
-    connection_exceptions = []
-    for _ in range(10 if not mock else 0):
-        try:
-            controller.connect()
-        except Exception as e:
-            app.logger.warning(f"Failed to connect: {e}")
-            connection_exceptions.append(e)
-        if connection_exceptions:
-            time.sleep(1)
-    if connection_exceptions:
-        raise RuntimeError(
-            "Failed to connect to backend after 10 tries:"
-            + repr(connection_exceptions)
-        )
+    if not mock:
+        controller.connect()
+
+    sleep(10)
+    controller._reactor_box.initialize()
+    controller._power_box.initialize()
+
 
     @app.route("/", methods=["GET"])
     def index() -> ResponseReturnValue:

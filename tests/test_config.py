@@ -5,8 +5,6 @@ from cattrs.errors import ClassValidationError
 
 from prcontrol.controller.configuration import LED, EmmissionPair
 
-# TODO: further test cases as soon as syntax is frozen
-
 
 def test_deserialise():
     json_string = """{

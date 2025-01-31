@@ -54,7 +54,6 @@ class Timer:
             time.sleep(1)
 
 
-
 class MeasurementScheduler:
     callback: Callable[[], None]
     interval: float
@@ -112,6 +111,7 @@ class ExperimentRunner:
         self.controller = controller
 
         # Init Public fields
+        self._lane = lane
         self.is_running = False
         self.state_sample = 0
         self.state_led_back = False
