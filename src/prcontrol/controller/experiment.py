@@ -23,6 +23,7 @@ class Timer:
     datetime_end: datetime
     time_remaining: timedelta
     paused: bool
+    running: bool
 
     def __init__(
         self,
@@ -30,24 +31,28 @@ class Timer:
     ):
         self.callback = callback
         self.thread = Thread(target=self._check_time)
+        self.paused = False
+        self.running = False
 
     def set(self, timespan: float) -> None:
         self.datetime_end = datetime.now() + timedelta(seconds=timespan)
-        self.thread.start()
         self.paused = False
+        self.running = True
+        self.thread = Thread(target=self._check_time)
+        self.thread.start()
 
     def pause(self) -> None:
-        if not self.paused:
+        if self.running and not self.paused:
             self.time_remaining = self.datetime_end - datetime.now()
             self.paused = True
 
     def resume(self) -> None:
-        if self.paused:
+        if self.running and self.paused:
             self.datetime_end = datetime.now() + self.time_remaining
             self.paused = False
 
     def _check_time(self) -> None:
-        while True:
+        while self.running:
             if not self.paused and datetime.now() > self.datetime_end:
                 self.callback()
                 break
@@ -88,6 +93,7 @@ class ExperimentRunner:
     state_led_back: bool
     is_running: bool
     needs_sample: bool
+    state_paused: bool
 
     # Timers for current experiment
     _timer_sample: Timer
@@ -117,6 +123,7 @@ class ExperimentRunner:
         self.state_led_back = False
         self.state_led_front = False
         self.needs_sample = False
+        self.state_paused = True
 
     # Public routines
 
@@ -129,6 +136,7 @@ class ExperimentRunner:
         self.state_led_front = True
         self.is_running = True
         self.needs_sample = False
+        self.state_paused = False
 
         # Setup data collection
         self._template = template
@@ -145,9 +153,10 @@ class ExperimentRunner:
         self._timer_sample = Timer(self._sample)
         self._timer_led_front = Timer(self._led_front_done)
         self._timer_led_back = Timer(self._led_back_done)
-        self._timer_sample.set(self._template.time_points_sample_taking[0])
+        if len(self._template.time_points_sample_taking) >= 1:
+            self._timer_sample.set(self._template.time_points_sample_taking[0])
         self._timer_led_front.set(self._template.led_front_exposure_time)
-        self._timer_led_front.set(self._template.led_back_exposure_time)
+        self._timer_led_back.set(self._template.led_back_exposure_time)
         self._scheduler = MeasurementScheduler(self._measure, measure_intervall)
         self._scheduler.start()
 
@@ -165,32 +174,38 @@ class ExperimentRunner:
         self.add_event("experiment was started")
 
     def pause_experiment(self) -> None:
-        if self.is_running:
+        if self.is_running and not self.state_paused:
+            self.state_paused = True
             self.add_event("experiment was paused")
             self._timer_sample.pause()
             self._timer_led_back.pause()
             self._timer_led_front.pause()
-            self.controller._power_box.deactivate_led(
-                LedPosition(self._lane, LedSide.FRONT)
-            )
-            self.controller._power_box.deactivate_led(
-                LedPosition(self._lane, LedSide.BACK)
-            )
+            if self.state_led_front:
+                self.controller._power_box.deactivate_led(
+                    LedPosition(self._lane, LedSide.FRONT)
+                )
+            if self.state_led_back:
+                self.controller._power_box.deactivate_led(
+                    LedPosition(self._lane, LedSide.BACK)
+                )
 
     def resume_experiment(self) -> None:
-        if self.is_running:
+        if self.is_running and self.state_paused:
+            self.state_paused = False
             self.add_event("experiment was resumed")
             self._timer_sample.resume()
             self._timer_led_back.resume()
             self._timer_led_front.resume()
-            self.controller._power_box.activate_led(
-                LedPosition(self._lane, LedSide.FRONT),
-                self._template.led_back_intensity,
-            )
-            self.controller._power_box.activate_led(
-                LedPosition(self._lane, LedSide.BACK),
-                self._template.led_back_intensity,
-            )
+            if self.state_led_front:
+                self.controller._power_box.activate_led(
+                    LedPosition(self._lane, LedSide.FRONT),
+                    self._template.led_back_intensity,
+                )
+            if self.state_led_back:
+                self.controller._power_box.activate_led(
+                    LedPosition(self._lane, LedSide.BACK),
+                    self._template.led_back_intensity,
+                )
 
     def sample_was_taken(self) -> None:
         if self.is_running and self.needs_sample:
@@ -202,15 +217,18 @@ class ExperimentRunner:
                 and not self.state_led_front
             ):
                 self._finish_experiment()
+            elif self.state_sample < len(
+                self._template.time_points_sample_taking
+            ):
+                self.needs_sample = False
+                timestamp = self._template.time_points_sample_taking[
+                    self.state_sample
+                ]
+                self._timer_sample = Timer(self._sample)
+                self._timer_sample.set(timestamp)
+                self.resume_experiment()
             else:
                 self.needs_sample = False
-                timestamp = (
-                    self._template.time_points_sample_taking[self.state_sample]
-                    - self._template.time_points_sample_taking[
-                        self.state_sample - 1
-                    ]
-                )
-                self._timer_sample.set(timestamp)
                 self.resume_experiment()
 
     def add_event(self, event: str) -> None:
@@ -242,132 +260,139 @@ class ExperimentRunner:
     # Private Routines
 
     def _finish_experiment(self) -> None:
-        self.add_event("experiment was finished")
-        self.is_running = False
-        self._scheduler.stop()
-        data = Experiment(
-            uid=self._uid,
-            name=self._template.name,
-            lab_notebook_entry="",  # Frontend
-            date=self._date,
-            config_file=self._template.config_file,
-            active_lane=self._lane.demux(1, 2, 3),
-            led_front=self._template.led_front,
-            led_front_intensity=self._template.led_front_intensity,
-            led_front_distance_to_vial=self._template.led_front_distance_to_vial,
-            led_front_exposure_time=self._template.led_front_exposure_time,
-            led_back=self._template.led_back,
-            led_back_intensity=self._template.led_back_intensity,
-            led_back_distance_to_vial=self._template.led_back_distance_to_vial,
-            led_back_exposure_time=self._template.led_back_exposure_time,
-            time_points_sample_taking=self._template.time_points_sample_taking,
-            size_sample=0.0,  # Frontend
-            parallel_experiments=tuple(self._neighbours),
-            position_thermocouple=self._template.position_thermocouple,
-            error_occured=self._error,
-            experiment_cancelled=self._canceled,
-            event_log=tuple(self._events),
-            measured_data=tuple(self._measurements),
-        )
-        self.controller.end_experiment(self._lane, data)
+        if self.is_running:
+            self.add_event("experiment was finished")
+            self.is_running = False
+            self._scheduler.stop()
+            data = Experiment(
+                uid=self._uid,
+                name=self._template.name,
+                lab_notebook_entry="",  # Frontend
+                date=self._date,
+                config_file=self._template.config_file,
+                active_lane=self._lane.demux(1, 2, 3),
+                led_front=self._template.led_front,
+                led_front_intensity=self._template.led_front_intensity,
+                led_front_distance_to_vial=self._template.led_front_distance_to_vial,
+                led_front_exposure_time=self._template.led_front_exposure_time,
+                led_back=self._template.led_back,
+                led_back_intensity=self._template.led_back_intensity,
+                led_back_distance_to_vial=self._template.led_back_distance_to_vial,
+                led_back_exposure_time=self._template.led_back_exposure_time,
+                time_points_sample_taking=self._template.time_points_sample_taking,
+                size_sample=0.0,  # Frontend
+                parallel_experiments=tuple(self._neighbours),
+                position_thermocouple=self._template.position_thermocouple,
+                error_occured=self._error,
+                experiment_cancelled=self._canceled,
+                event_log=tuple(self._events),
+                measured_data=tuple(self._measurements),
+            )
+            self.controller.end_experiment(self._lane, data)
 
     # Callbacks from timer
 
     def _sample(self) -> None:
-        self.add_event("need to take sample")
-        self.needs_sample = True
-        self.pause_experiment()
-        self.controller.alert_take_sample(self._lane)
-        self.state_sample += 1
+        if self.is_running:
+            self.add_event("need to take sample")
+            self.needs_sample = True
+            self.state_sample += 1
+            self.pause_experiment()
+            self.controller.alert_take_sample(self._lane)
 
     def _led_front_done(self) -> None:
-        self.controller._power_box.deactivate_led(
-            LedPosition(self._lane, LedSide.FRONT)
-        )
-        self.state_led_front = False
-        if not self.state_led_back and self.state_sample == len(
-            self._template.time_points_sample_taking
-        ):
-            self._finish_experiment()
+        if self.is_running:
+            self.controller._power_box.deactivate_led(
+                LedPosition(self._lane, LedSide.FRONT)
+            )
+            self.state_led_front = False
+            if not self.state_led_back and self.state_sample == len(
+                self._template.time_points_sample_taking
+            ):
+                self._finish_experiment()
 
     def _led_back_done(self) -> None:
-        self.controller._power_box.deactivate_led(
-            LedPosition(self._lane, LedSide.BACK)
-        )
-        self.state_led_back = False
-        if not self.state_led_front and self.state_sample == len(
-            self._template.time_points_sample_taking
-        ):
-            self._finish_experiment()
+        if self.is_running:
+            self.controller._power_box.deactivate_led(
+                LedPosition(self._lane, LedSide.BACK)
+            )
+            self.state_led_back = False
+            if not self.state_led_front and self.state_sample == len(
+                self._template.time_points_sample_taking
+            ):
+                self._finish_experiment()
 
     def _measure(self) -> None:
-        data = self.controller.state
-        time = (datetime.now() - self._start_time).total_seconds()
-        self._measurements.append(
-            MeasuredDataAtTimePoint(
-                timepoint=time,
-                temperature_thermocouple=data.reactor_box_state.thermocouble_temp.celsius,
-                ambient_temp_strombox=data.power_box_state.abmient_temperature.celsius,
-                ambient_temp_photobox=data.reactor_box_state.ambient_temperature.celsius,
-                voltage_lane1=(
-                    (
-                        data.power_box_state.voltage_lane_1_back.milli_volts
-                        + data.power_box_state.voltage_lane_1_front.milli_volts
-                    )
-                    / 2
-                ),
-                voltage_lane2=(
-                    (
-                        data.power_box_state.voltage_lane_2_back.milli_volts
-                        + data.power_box_state.voltage_lane_2_front.milli_volts
-                    )
-                    / 2
-                ),
-                voltage_lane3=(
-                    (
-                        data.power_box_state.voltage_lane_3_back.milli_volts
-                        + data.power_box_state.voltage_lane_3_front.milli_volts
-                    )
-                    / 2
-                ),
-                current_lane1=(
-                    (
-                        data.power_box_state.current_lane_1_back.milli_amps
-                        + data.power_box_state.current_lane_1_front.milli_amps
-                    )
-                    / 2
-                ),
-                current_lane2=(
-                    (
-                        data.power_box_state.current_lane_2_back.milli_amps
-                        + data.power_box_state.current_lane_2_front.milli_amps
-                    )
-                    / 2
-                ),
-                current_lane3=(
-                    (
-                        data.power_box_state.current_lane_3_back.milli_amps
-                        + data.power_box_state.current_lane_3_front.milli_amps
-                    )
-                    / 2
-                ),
-                ir_temp_lane1=data.reactor_box_state.lane_1_ir_temp.celsius,
-                ir_temp_lane2=data.reactor_box_state.lane_2_ir_temp.celsius,
-                ir_temp_lane3=data.reactor_box_state.lane_3_ir_temp.celsius,
-                uv_index=data.reactor_box_state.uv_index.uvi,
-                ambient_light=data.reactor_box_state.ambient_light.hudreth_lux,
+        if self.is_running:
+            data = self.controller.state
+            time = (datetime.now() - self._start_time).total_seconds()
+            self._measurements.append(
+                MeasuredDataAtTimePoint(
+                    timepoint=time,
+                    temperature_thermocouple=data.reactor_box_state.thermocouble_temp.celsius,  # noqa: E501
+                    ambient_temp_strombox=data.power_box_state.abmient_temperature.celsius,  # noqa: E501
+                    ambient_temp_photobox=data.reactor_box_state.ambient_temperature.celsius,  # noqa: E501
+                    voltage_lane1=(
+                        (
+                            data.power_box_state.voltage_lane_1_back.milli_volts
+                            + data.power_box_state.voltage_lane_1_front.milli_volts  # noqa: E501
+                        )
+                        / 2
+                    ),
+                    voltage_lane2=(
+                        (
+                            data.power_box_state.voltage_lane_2_back.milli_volts
+                            + data.power_box_state.voltage_lane_2_front.milli_volts  # noqa: E501
+                        )
+                        / 2
+                    ),
+                    voltage_lane3=(
+                        (
+                            data.power_box_state.voltage_lane_3_back.milli_volts
+                            + data.power_box_state.voltage_lane_3_front.milli_volts  # noqa: E501
+                        )
+                        / 2
+                    ),
+                    current_lane1=(
+                        (
+                            data.power_box_state.current_lane_1_back.milli_amps
+                            + data.power_box_state.current_lane_1_front.milli_amps  # noqa: E501
+                        )
+                        / 2
+                    ),
+                    current_lane2=(
+                        (
+                            data.power_box_state.current_lane_2_back.milli_amps
+                            + data.power_box_state.current_lane_2_front.milli_amps  # noqa: E501
+                        )
+                        / 2
+                    ),
+                    current_lane3=(
+                        (
+                            data.power_box_state.current_lane_3_back.milli_amps
+                            + data.power_box_state.current_lane_3_front.milli_amps  # noqa: E501
+                        )
+                        / 2
+                    ),
+                    ir_temp_lane1=data.reactor_box_state.lane_1_ir_temp.celsius,
+                    ir_temp_lane2=data.reactor_box_state.lane_2_ir_temp.celsius,
+                    ir_temp_lane3=data.reactor_box_state.lane_3_ir_temp.celsius,
+                    uv_index=data.reactor_box_state.uv_index.uvi,
+                    ambient_light=data.reactor_box_state.ambient_light.hudreth_lux,
+                )
             )
-        )
 
 
 class ExperimentSupervisor:
     runner: list[ExperimentRunner]
+    controller: "Controller"
 
     def __init__(self, controller: "Controller"):
         self.runner = []
         self.runner.append(ExperimentRunner(LedLane.LANE_1, controller))
         self.runner.append(ExperimentRunner(LedLane.LANE_2, controller))
         self.runner.append(ExperimentRunner(LedLane.LANE_3, controller))
+        self.controller = controller
 
     # Public Methods for "Controller"
 
@@ -378,12 +403,15 @@ class ExperimentSupervisor:
         uid: int,
         measure_interval: float,
     ) -> None:
+        self.runner[lane.demux(0, 1, 2)] = ExperimentRunner(
+            lane, self.controller
+        )
         self.runner[lane.demux(0, 1, 2)].start_experiment(
             template, uid, measure_interval
         )
-
         for r in self.runner:
-            r.registerNeighbourExperiment(uid)
+            if r._lane != lane:
+                r.registerNeighbourExperiment(uid)
 
     def pause_experiment_on(self, lane: LedLane) -> None:
         self.runner[lane.demux(0, 1, 2)].pause_experiment()
