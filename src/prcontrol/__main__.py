@@ -59,7 +59,6 @@ if __name__ == "__main__":
     app, socketio, _, controller = create_app(
         reactor_box_endpoint=get_reactor_box_endpoint(),
         power_box_endpoint=get_power_box_endpoint(),
-        mock=True,
     )
 
     try:
