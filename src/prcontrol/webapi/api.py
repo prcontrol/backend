@@ -1,4 +1,5 @@
 import json
+import logging
 from time import sleep
 from typing import Any
 
@@ -17,6 +18,8 @@ from prcontrol.controller.state_snapshots import ControllerStateWsData
 
 config_manager: ConfigManager
 controller: Controller
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -38,10 +41,14 @@ def create_app(
     )
 
     if not mock:
+        logger.info("Connecting to controller.")
         controller.connect()
+        logger.debug("Connected.")
         sleep(1.0)
         controller._reactor_box.initialize()
+        logger.debug("Initialized reactor box")
         controller._power_box.initialize().reset_leds()
+        logger.debug("Initialized power box")
 
     @app.route("/", methods=["GET"])
     def index() -> ResponseReturnValue:

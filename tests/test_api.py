@@ -43,9 +43,7 @@ config_manager: ConfigManager
 def client():
     global config_manager
     app, _, config_manager, _ = create_app(
-        ("0.0.0.0", 1337),
-        ("0.0.0.0", 1234),
-        mock=True
+        ("0.0.0.0", 1337), ("0.0.0.0", 1234), mock=True
     )
     with app.test_client() as client:
         yield client

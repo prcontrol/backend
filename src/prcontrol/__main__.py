@@ -2,20 +2,23 @@ import contextlib
 import logging
 import os
 
-from tinkerforge.ip_connection import Error as TfIpError
+from tinkerforge.ip_connection import Error as TfIpError  # type: ignore
 
 from prcontrol.controller.controller import TfEndpoint
 from prcontrol.webapi.api import create_app
 
-stderr_handler = logging.StreamHandler()
-formatter = logging.Formatter(
-    "[%(asctime)s] %(levelname)s "
-    "[%(filename)s.%(funcName)s:%(lineno)d] %(message)s",
-    datefmt="%a, %d %b %Y %H:%M:%S",
+logging.root.setLevel(logging.DEBUG)
+
+log_stdout = logging.StreamHandler()
+log_stdout.setFormatter(
+    logging.Formatter(
+        "[%(asctime)s] %(levelname)s "
+        "[%(filename)s.%(funcName)s:%(lineno)d] %(message)s",
+        datefmt="%a, %d %b %Y %H:%M:%S",
+    )
 )
-stderr_handler.setFormatter(formatter)
-stderr_handler.setLevel(logging.DEBUG)
-logging.getLogger().addHandler(stderr_handler)
+log_stdout.setLevel(logging.DEBUG)
+logging.basicConfig(handlers=[log_stdout])
 
 
 def _error() -> None:
