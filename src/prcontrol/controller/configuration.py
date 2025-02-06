@@ -85,6 +85,9 @@ class LED(ConfigObject):
     def get_uid(self) -> int:
         return self.uid
 
+    def is_uv(self) -> bool:
+        return self.min_wavelength <= 400
+
 
 @attrs.frozen(slots=True)
 class TinkerforgeBricklet(ConfigObject):

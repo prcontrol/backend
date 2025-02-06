@@ -11,18 +11,19 @@ from prcontrol.controller.config_manager import ConfigFolder, ConfigManager
 from prcontrol.controller.controller import (
     Controller,
     ControllerConfig,
+    TfEndpoint,
 )
 from prcontrol.controller.state_snapshots import ControllerStateWsData
-from prcontrol.webapi.endpoints import (
-    get_power_box_endpoint,
-    get_reactor_box_endpoint,
-)
 
 config_manager: ConfigManager
 controller: Controller
 
 
-def create_app(mock: bool = False) -> tuple[Flask, SocketIO, ConfigManager]:
+def create_app(
+    reactor_box_endpoint: TfEndpoint | tuple[str, int],
+    power_box_endpoint: TfEndpoint | tuple[str, int],
+    mock: bool = False,
+) -> tuple[Flask, SocketIO, ConfigManager, Controller]:
     global config_manager, controller
     app = Flask(__name__)
     CORS(app)
@@ -30,24 +31,17 @@ def create_app(mock: bool = False) -> tuple[Flask, SocketIO, ConfigManager]:
 
     config_manager = ConfigManager()
 
-    print(get_reactor_box_endpoint())
     controller = Controller(
-        reactor_box=get_reactor_box_endpoint()
-        if not mock
-        else ("111.111.111.111", 1234),
-        power_box=get_power_box_endpoint()
-        if not mock
-        else ("111.111.111.111", 1337),
+        reactor_box=reactor_box_endpoint,
+        power_box=power_box_endpoint,
         config=ControllerConfig.default_values(),
     )
 
     if not mock:
         controller.connect()
-
-    sleep(10)
-    controller._reactor_box.initialize()
-    controller._power_box.initialize()
-
+        sleep(1.0)
+        controller._reactor_box.initialize()
+        controller._power_box.initialize().reset_leds()
 
     @app.route("/", methods=["GET"])
     def index() -> ResponseReturnValue:
@@ -169,4 +163,4 @@ def create_app(mock: bool = False) -> tuple[Flask, SocketIO, ConfigManager]:
             )
             socketio.sleep(1)
 
-    return app, socketio, config_manager
+    return app, socketio, config_manager, controller

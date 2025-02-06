@@ -42,7 +42,11 @@ config_manager: ConfigManager
 @pytest.fixture
 def client():
     global config_manager
-    app, _, config_manager = create_app(mock=True)
+    app, _, config_manager, _ = create_app(
+        ("0.0.0.0", 1337),
+        ("0.0.0.0", 1234),
+        mock=True
+    )
     with app.test_client() as client:
         yield client
 

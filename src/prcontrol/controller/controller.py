@@ -102,6 +102,8 @@ class ControllerConfig:
     threshold_thermocouple_temp: Temperature
     threshold_thermocouple_affected_lanes: frozenset[LedLane]
 
+    threshold_uv: UvIndex
+
     @staticmethod
     def default_values() -> "ControllerConfig":
         # TODO get sensible values
@@ -122,6 +124,7 @@ class ControllerConfig:
             threshold_thermocouple_affected_lanes=frozenset(
                 (LedLane.LANE_1, LedLane.LANE_2, LedLane.LANE_3)
             ),
+            threshold_uv=UvIndex.from_tenth_uvi(29),
         )
 
 
@@ -149,7 +152,7 @@ class Controller:
     _power_box_endpoint: TfEndpoint
     _power_box: PowerBox
 
-    config: ControllerConfig
+    _config: ControllerConfig
 
     experiment_supervisor: ExperimentSupervisor
 
@@ -351,7 +354,8 @@ class Controller:
         self.experiment_supervisor.add_event_on(LedLane.LANE_2, event_str)
         self.experiment_supervisor.add_event_on(LedLane.LANE_3, event_str)
 
-    def _cancel_all_experiments(self) -> None:
+    def _cancel_all_experiments(self, msg: str | None = None) -> None:
+        logger.warning(f"Canceling all experiments! Reason: {msg}")
         self.experiment_supervisor.register_error_on(LedLane.LANE_1)
         self.experiment_supervisor.register_error_on(LedLane.LANE_2)
         self.experiment_supervisor.register_error_on(LedLane.LANE_3)
@@ -387,11 +391,9 @@ class Controller:
 
     def _callback_reactor_box_connected(self, *_: Any) -> None:
         self.state.reactor_box_connected = True
-        # TODO: can initilize can be called twice without creating a bug??
-        #   we should probably implement this in ReactorBox though....
         logger.debug("Connection callback received from reactor box")
-        # self._reactor_box.initialize()
-        # self._set_connected_led()
+        self._reactor_box.initialize()
+        self._set_connected_led()
 
     def _callback_reactor_box_disconnected(self, *_: Any) -> None:
         logger.info("Disconnected from reactor box!")
@@ -403,8 +405,8 @@ class Controller:
         # TODO can initilize can be called twice without creating a bug?
         #   see above....
         logger.debug("Connection callback received from power box")
-        # self._power_box.initialize()
-        # self._set_connected_led()
+        self._power_box.initialize()
+        self._set_connected_led()
 
     def _callback_power_box_disconnected(self, *_: Any) -> None:
         logger.info("Disconnected from power box!")
@@ -441,9 +443,17 @@ class Controller:
         wurden zwei Spannungsfehler für eine Lane detektiert, soll die
         LED schnell blinken (250 ms an / 250 ms aus).
         """
-        # TODO implement this. Also implement _observer_sample_taken
-        #   which signals when the sample taken button is pressed.
-        return self  # TODO implement this.
+        if lane == LedLane.LANE_1:
+            self.state.sample_lane_1 = True
+            self._reactor_box.io_panel.led_state_lane_1 = LedState.HIGH
+        elif lane == LedLane.LANE_2:
+            self.state.sample_lane_2 = True
+            self._reactor_box.io_panel.led_state_lane_2 = LedState.HIGH
+        elif lane == LedLane.LANE_3:
+            self.state.sample_lane_3 = True
+            self._reactor_box.io_panel.led_state_lane_3 = LedState.HIGH
+
+        return self
 
     def end_experiment(self, lane: LedLane, data: Experiment) -> None:
         print("Experiment done, here is the data:")
@@ -654,7 +664,6 @@ class Controller:
     ) -> None:
         # Not sure what to do here tbh...
         return
-        raise NotImplementedError("TODO")  # TODO implement this.
 
     def _observer_sample_taken(
         self,
@@ -675,8 +684,19 @@ class Controller:
         wurden zwei Spannungsfehler für eine Lane detektiert, soll die
         LED schnell blinken (250 ms an / 250 ms aus).
         """
+        if not taken:
+            return
+
         self.experiment_supervisor.sample_was_taken_on(lane)
-        return  # TODO implement this.
+        if lane == LedLane.LANE_1:
+            self.state.sample_lane_1 = False
+            self._reactor_box.io_panel.led_state_lane_1 = LedState.LOW
+        elif lane == LedLane.LANE_2:
+            self.state.sample_lane_2 = False
+            self._reactor_box.io_panel.led_state_lane_2 = LedState.LOW
+        elif lane == LedLane.LANE_3:
+            self.state.sample_lane_3 = False
+            self._reactor_box.io_panel.led_state_lane_3 = LedState.LOW
 
     def _observer_uv_sensor(
         self,
@@ -692,7 +712,14 @@ class Controller:
         (A7 PhotoBox → low), sollte der Wert danach wieder unter den
         hinterlegten Wert fallen soll wieder auf grün geschaltet werden.
         """
-        return  # TODO implement this.
+        if uv_index > self.config.threshold_uv:
+            self._reactor_box.io_panel.led_uv_warning = LedState.LOW
+        else:
+            self._reactor_box.io_panel.led_uv_warning = LedState.HIGH
+
+        self._reactor_box.io_panel.led_uv_installed = (
+            LedState.HIGH if self.state.uv_installed else LedState.LOW
+        )
 
     def _observer_ambient_temp(
         self,
@@ -767,4 +794,23 @@ class Controller:
         soll hinterlegbar sein, ob ein (bestimmtes) Experiment abgebrochen
         werden soll, sollte der Temperatur-Wert überschritten werden.
         """
-        return  # TODO implement this.
+        st = self.state
+        if temp > self.config.threshold_thermocouple_temp:
+            st.thermocouple_theshold_status = ThresholdStatus.EXCEEDED
+            for lane in self.config.threshold_thermocouple_affected_lanes:
+                self.experiment_supervisor.add_event_on(
+                    lane, "Thermocouple exceeded critical threshold"
+                )
+                self.experiment_supervisor.register_error_on(lane)
+                self.experiment_supervisor.cancel_experiment_on(lane)
+        elif st.thermocouple_theshold_status == ThresholdStatus.EXCEEDED:
+            st.thermocouple_theshold_status = ThresholdStatus.OK_AGAIN
+
+        if st.thermocouple_theshold_status == ThresholdStatus.OK:
+            self._reactor_box.io_panel.led_warning_thermocouple = LedState.HIGH
+        elif st.thermocouple_theshold_status == ThresholdStatus.OK_AGAIN:
+            self._reactor_box.io_panel.led_warning_thermocouple = (
+                LedState.BLINK_SLOW
+            )
+        else:
+            self._reactor_box.io_panel.led_warning_thermocouple = LedState.HIGH
