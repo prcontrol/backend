@@ -107,7 +107,7 @@ class ConfigManager:
     configs: ConfigFolder[HardwareConfig]
 
     def __init__(self, base_path: str | pathlib.Path | None = None) -> None:
-        logger.info(f"Initializing config folders at {base_path!r}.")
+        logger.info(f"ConfigManager at {base_path!r}.")
         if base_path is None:
             base_path = "./workspace"
         base_path = pathlib.Path(base_path)

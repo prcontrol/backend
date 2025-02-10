@@ -12,6 +12,7 @@ from prcontrol.controller.configuration import (
 )
 from prcontrol.controller.controller import ControllerState
 from prcontrol.controller.experiment import ExperimentSupervisor
+from prcontrol.controller.measurements import Current
 from prcontrol.controller.power_box import PowerBoxSensorState
 from prcontrol.controller.reactor_box import ReactorBoxSensorState
 
@@ -81,6 +82,10 @@ class MockPowerbox:
         self.led[LedPosition(LedLane.LANE_3, LedSide.FRONT)] = False
         self.led[LedPosition(LedLane.LANE_3, LedSide.BACK)] = False
 
+    def set_led_max_current(self, led: LedPosition, current: Current) -> Self:
+        # TODO ExperminetLogger
+        return self
+
     def activate_led(
         self, position: LedPosition, target_intensity: float
     ) -> Self:
@@ -97,7 +102,7 @@ class MockPowerbox:
 
 
 class MockController:
-    _power_box: MockPowerbox
+    power_box: MockPowerbox
     state: ControllerState
     logger: ExperimentLogger
     supervisor: "ExperimentSupervisor"
@@ -105,7 +110,7 @@ class MockController:
 
     def __init__(self, logger: ExperimentLogger):
         self.supervisor = ExperimentSupervisor(self)
-        self._power_box = MockPowerbox(logger)
+        self.power_box = MockPowerbox(logger)
         self.state = ControllerState.default(
             ReactorBoxSensorState.empty(), PowerBoxSensorState.empty()
         )

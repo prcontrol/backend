@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import os
+from typing import Never
 
 from tinkerforge.ip_connection import Error as TfIpError  # type: ignore
 
@@ -21,7 +22,7 @@ log_stdout.setLevel(logging.DEBUG)
 logging.basicConfig(handlers=[log_stdout])
 
 
-def _error() -> None:
+def _error() -> Never:
     print(
         "Error. IP-Addresses of reactor- and power-box must be "
         "specified in the environment variables REACTOR_BOX and POWER_BOX"
@@ -33,7 +34,6 @@ def get_reactor_box_endpoint() -> TfEndpoint:
     host = os.environ.get("REACTOR_BOX")
     if host is None:
         _error()
-        raise RuntimeError("Show mypy that this is unreachable...")
 
     return TfEndpoint(
         host=host,
@@ -45,7 +45,6 @@ def get_power_box_endpoint() -> TfEndpoint:
     host = os.environ.get("POWER_BOX")
     if host is None:
         _error()
-        raise RuntimeError("Show mypy that this is unreachable...")
 
     return TfEndpoint(
         host=host,
@@ -68,4 +67,4 @@ if __name__ == "__main__":
     finally:
         print("Shutting down")
         with contextlib.suppress(TfIpError):
-            controller._power_box.reset_leds()
+            controller.power_box.reset_leds()

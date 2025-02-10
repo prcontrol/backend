@@ -13,6 +13,7 @@ from prcontrol.controller.configuration import (
     ExperimentTemplate,
     MeasuredDataAtTimePoint,
 )
+from prcontrol.controller.measurements import Current
 
 if TYPE_CHECKING:
     from prcontrol.controller.controller import Controller
@@ -37,8 +38,8 @@ class Timer:
         self.paused = False
         self.running = False
 
-    def set(self, timespan: float) -> None:
-        self.datetime_end = datetime.now() + timedelta(seconds=timespan)
+    def set(self, timespan: timedelta) -> None:
+        self.datetime_end = datetime.now() + timespan
         self.paused = False
         self.running = True
         self.thread = Thread(target=self._check_time)
@@ -157,18 +158,35 @@ class ExperimentRunner:
         self._timer_led_front = Timer(self._led_front_done)
         self._timer_led_back = Timer(self._led_back_done)
         if len(self._template.time_points_sample_taking) >= 1:
-            self._timer_sample.set(self._template.time_points_sample_taking[0])
-        self._timer_led_front.set(self._template.led_front_exposure_time)
-        self._timer_led_back.set(self._template.led_back_exposure_time)
+            self._timer_sample.set(
+                timedelta(seconds=self._template.time_points_sample_taking[0])
+            )
+        self._timer_led_front.set(
+            timedelta(seconds=self._template.led_front_exposure_time)
+        )
+        self._timer_led_back.set(
+            timedelta(seconds=self._template.led_back_exposure_time)
+        )
         self._scheduler = MeasurementScheduler(self._measure, measure_intervall)
         self._scheduler.start()
 
+        # Configure LEDs ... is this mA?
+        self.controller.power_box.set_led_max_current(
+            LedPosition(self._lane, LedSide.FRONT),
+            Current.from_milli_amps(self._template.led_front.max_current),
+        )
+
+        self.controller.power_box.set_led_max_current(
+            LedPosition(self._lane, LedSide.BACK),
+            Current.from_milli_amps(self._template.led_back.max_current),
+        )
+
         # Start Exposure
-        self.controller._power_box.activate_led(
+        self.controller.power_box.activate_led(
             LedPosition(self._lane, LedSide.FRONT),
             self._template.led_back_intensity,
         )
-        self.controller._power_box.activate_led(
+        self.controller.power_box.activate_led(
             LedPosition(self._lane, LedSide.BACK),
             self._template.led_back_intensity,
         )
@@ -184,11 +202,11 @@ class ExperimentRunner:
             self._timer_led_back.pause()
             self._timer_led_front.pause()
             if self.state_led_front:
-                self.controller._power_box.deactivate_led(
+                self.controller.power_box.deactivate_led(
                     LedPosition(self._lane, LedSide.FRONT)
                 )
             if self.state_led_back:
-                self.controller._power_box.deactivate_led(
+                self.controller.power_box.deactivate_led(
                     LedPosition(self._lane, LedSide.BACK)
                 )
 
@@ -200,12 +218,12 @@ class ExperimentRunner:
             self._timer_led_back.resume()
             self._timer_led_front.resume()
             if self.state_led_front:
-                self.controller._power_box.activate_led(
+                self.controller.power_box.activate_led(
                     LedPosition(self._lane, LedSide.FRONT),
                     self._template.led_back_intensity,
                 )
             if self.state_led_back:
-                self.controller._power_box.activate_led(
+                self.controller.power_box.activate_led(
                     LedPosition(self._lane, LedSide.BACK),
                     self._template.led_back_intensity,
                 )
@@ -228,7 +246,7 @@ class ExperimentRunner:
                     self.state_sample
                 ]
                 self._timer_sample = Timer(self._sample)
-                self._timer_sample.set(timestamp)
+                self._timer_sample.set(timedelta(seconds=timestamp))
                 self.resume_experiment()
             else:
                 self.needs_sample = False
@@ -243,10 +261,10 @@ class ExperimentRunner:
         if self.is_running:
             self.add_event("experiment was cancelled")
             self._canceled = True
-            self.controller._power_box.deactivate_led(
+            self.controller.power_box.deactivate_led(
                 LedPosition(self._lane, LedSide.FRONT)
             )
-            self.controller._power_box.deactivate_led(
+            self.controller.power_box.deactivate_led(
                 LedPosition(self._lane, LedSide.BACK)
             )
             self._finish_experiment()
@@ -312,7 +330,7 @@ class ExperimentRunner:
 
     def _led_front_done(self) -> None:
         if self.is_running:
-            self.controller._power_box.deactivate_led(
+            self.controller.power_box.deactivate_led(
                 LedPosition(self._lane, LedSide.FRONT)
             )
             self.state_led_front = False
@@ -323,7 +341,7 @@ class ExperimentRunner:
 
     def _led_back_done(self) -> None:
         if self.is_running:
-            self.controller._power_box.deactivate_led(
+            self.controller.power_box.deactivate_led(
                 LedPosition(self._lane, LedSide.BACK)
             )
             self.state_led_back = False
@@ -419,27 +437,27 @@ class ExperimentSupervisor:
         )
 
     def pause_experiment_on(self, lane: LedLane) -> None:
-        logging.debug(f"Pausing on lane {lane}.")
+        logger.debug(f"Pausing on lane {lane}.")
         self.runner[lane.demux(0, 1, 2)].pause_experiment()
 
     def resume_experiment_on(self, lane: LedLane) -> None:
-        logging.debug(f"Resuming on lane {lane}.")
+        logger.debug(f"Resuming on lane {lane}.")
         self.runner[lane.demux(0, 1, 2)].resume_experiment()
 
     def cancel_experiment_on(self, lane: LedLane) -> None:
-        logging.debug(f"Canceling on lane {lane}.")
+        logger.debug(f"Canceling on lane {lane}.")
         self.runner[lane.demux(0, 1, 2)].cancel()
 
     def sample_was_taken_on(self, lane: LedLane) -> None:
-        logging.debug(f"Sample taken on lane {lane}.")
+        logger.debug(f"Sample taken on lane {lane}.")
         self.runner[lane.demux(0, 1, 2)].sample_was_taken()
 
     def add_event_on(self, lane: LedLane, event: str) -> None:
-        logging.debug(f"Event {event} on lane {lane}.")
+        logger.debug(f"Event {event} on lane {lane}.")
         self.runner[lane.demux(0, 1, 2)].add_event(event)
 
     def register_error_on(self, lane: LedLane) -> None:
-        logging.warning(f"Registered error on lane {lane}")
+        logger.warning(f"Registered error on lane {lane}")
         self.runner[lane.demux(0, 1, 2)].register_error()
 
 

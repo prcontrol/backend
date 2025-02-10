@@ -45,9 +45,9 @@ def create_app(
         controller.connect()
         logger.debug("Connected.")
         sleep(1.0)
-        controller._reactor_box.initialize()
+        controller.reactor_box.initialize()
         logger.debug("Initialized reactor box")
-        controller._power_box.initialize().reset_leds()
+        controller.power_box.initialize().reset_leds()
         logger.debug("Initialized power box")
 
     @app.route("/", methods=["GET"])

@@ -146,11 +146,11 @@ class Controller:
 
     _reactor_box_ipcon: IPConnection
     _reactor_box_endpoint: TfEndpoint
-    _reactor_box: ReactorBox
+    reactor_box: ReactorBox
 
     _power_box_ipcon: IPConnection
     _power_box_endpoint: TfEndpoint
-    _power_box: PowerBox
+    power_box: PowerBox
 
     _config: ControllerConfig
 
@@ -197,7 +197,7 @@ class Controller:
 
         self._reactor_box_ipcon = IPConnection()
         self._reactor_box_endpoint = reactor_box
-        self._reactor_box = ReactorBox(
+        self.reactor_box = ReactorBox(
             ReactorBoxBricklets(self._reactor_box_ipcon),
             self._dispatch_onchange_reactor_box,
             reactor_box_sensor_period_ms,
@@ -205,14 +205,14 @@ class Controller:
 
         self._power_box_ipcon = IPConnection()
         self._power_box_endpoint = power_box
-        self._power_box = PowerBox(
+        self.power_box = PowerBox(
             PowerBoxBricklets(self._power_box_ipcon),
             self._dispatch_onchange_power_box,
             power_box_sensor_period_ms,
         )
 
         self.state = ControllerState.default(
-            self._reactor_box.sensors, self._power_box.sensors
+            self.reactor_box.sensors, self.power_box.sensors
         )
 
         self._power_box_ipcon.register_callback(
@@ -392,7 +392,7 @@ class Controller:
     def _callback_reactor_box_connected(self, *_: Any) -> None:
         self.state.reactor_box_connected = True
         logger.debug("Connection callback received from reactor box")
-        self._reactor_box.initialize()
+        self.reactor_box.initialize()
         self._set_connected_led()
 
     def _callback_reactor_box_disconnected(self, *_: Any) -> None:
@@ -405,7 +405,7 @@ class Controller:
         # TODO can initilize can be called twice without creating a bug?
         #   see above....
         logger.debug("Connection callback received from power box")
-        self._power_box.initialize()
+        self.power_box.initialize()
         self._set_connected_led()
 
     def _callback_power_box_disconnected(self, *_: Any) -> None:
@@ -426,7 +426,7 @@ class Controller:
         # We wouldn't have a connection to communicate with the led...
         # The blinking stops automatically after the last monoflop has passed.
         if self.state.reactor_box_connected and self.state.power_box_connected:
-            self._power_box.io_panel.led_connected = LedState.BLINK_FAST
+            self.power_box.io_panel.led_connected = LedState.BLINK_FAST
 
     # ===============================
     # =           EVENTS            =
@@ -445,13 +445,13 @@ class Controller:
         """
         if lane == LedLane.LANE_1:
             self.state.sample_lane_1 = True
-            self._reactor_box.io_panel.led_state_lane_1 = LedState.HIGH
+            self.reactor_box.io_panel.led_state_lane_1 = LedState.HIGH
         elif lane == LedLane.LANE_2:
             self.state.sample_lane_2 = True
-            self._reactor_box.io_panel.led_state_lane_2 = LedState.HIGH
+            self.reactor_box.io_panel.led_state_lane_2 = LedState.HIGH
         elif lane == LedLane.LANE_3:
             self.state.sample_lane_3 = True
-            self._reactor_box.io_panel.led_state_lane_3 = LedState.HIGH
+            self.reactor_box.io_panel.led_state_lane_3 = LedState.HIGH
 
         return self
 
@@ -495,9 +495,9 @@ class Controller:
             == new_state.reactorbox_lid
             == CaseLidState.CLOSED
         ):
-            self._power_box.io_panel.led_boxes_closed = LedState.HIGH
+            self.power_box.io_panel.led_boxes_closed = LedState.HIGH
         else:
-            self._power_box.io_panel.led_boxes_closed = LedState.LOW
+            self.power_box.io_panel.led_boxes_closed = LedState.LOW
 
     def _observer_power_box_cable(
         self,
@@ -517,9 +517,9 @@ class Controller:
         maintenance_mode_active: bool,
     ) -> None:
         if maintenance_mode_active:
-            self._power_box.io_panel.led_maintenance_active = LedState.HIGH
+            self.power_box.io_panel.led_maintenance_active = LedState.HIGH
         else:
-            self._power_box.io_panel.led_maintenance_active = LedState.LOW
+            self.power_box.io_panel.led_maintenance_active = LedState.LOW
 
     def _observer_water_sensor(
         self,
@@ -534,12 +534,12 @@ class Controller:
         abgebrochen werden.
         """
         if not detected:
-            self._power_box.io_panel.led_warning_water = LedState.LOW
+            self.power_box.io_panel.led_warning_water = LedState.LOW
             return
         logger.warning(f"WATER DETECTED!!!!! Current state: {_new_state}")
         self._add_event_on_all_lanes("Water leakage detected")
         self._cancel_all_experiments()
-        self._power_box.io_panel.led_warning_water = LedState.BLINK_FAST
+        self.power_box.io_panel.led_warning_water = LedState.BLINK_FAST
 
     def _observer_voltage_error(
         self,
@@ -558,7 +558,7 @@ class Controller:
         mehrere Fehler erkannt worden sein, soll die LED schnell blinken
         (250 ms an / 250 ms aus).
         """
-        if voltage.milli_volts == 0 and self._power_box.is_led_active(led):
+        if voltage.milli_volts == 0 and self.power_box.is_led_active(led):
             self._voltage_errors.add(led)
             self.experiment_supervisor.add_event_on(led.lane, "Voltage Error")
             self.experiment_supervisor.register_error_on(led.lane)
@@ -568,11 +568,11 @@ class Controller:
 
         num_errors = len(self._voltage_errors)
         if num_errors == 1:
-            self._power_box.io_panel.led_warning_voltage = LedState.BLINK_SLOW
+            self.power_box.io_panel.led_warning_voltage = LedState.BLINK_SLOW
         elif num_errors:
-            self._power_box.io_panel.led_warning_voltage = LedState.BLINK_FAST
+            self.power_box.io_panel.led_warning_voltage = LedState.BLINK_FAST
         else:
-            self._power_box.io_panel.led_warning_voltage = LedState.LOW
+            self.power_box.io_panel.led_warning_voltage = LedState.LOW
 
     def _observer_ir_temp_lane(
         self,
@@ -617,8 +617,8 @@ class Controller:
             self.experiment_supervisor.register_error_on(lane)
             self.experiment_supervisor.cancel_experiment_on(lane)
             logger.warning(warning)
-
             new_status = ThresholdStatus.ABORT
+
         elif temp > threshold_warn:
             logger.warning(
                 f"IR temp in lane {lane} exceeded threshold. "
@@ -628,11 +628,13 @@ class Controller:
                 lane, "IR Temperature exceeded first threshold"
             )
             new_status = ThresholdStatus.EXCEEDED
+
         elif old_status == ThresholdStatus.EXCEEDED:
             self.experiment_supervisor.add_event_on(
                 lane, "IR Temperature back to normal"
             )
             new_status = ThresholdStatus.OK_AGAIN
+
         else:
             new_status = old_status
 
@@ -647,13 +649,13 @@ class Controller:
 
         if lane == LedLane.LANE_1:
             self.state.IR_temp_1_threshold_status = new_status
-            self._reactor_box.io_panel.led_warning_temp_lane_1 = new_led
+            self.reactor_box.io_panel.led_warning_temp_lane_1 = new_led
         elif lane == LedLane.LANE_2:
             self.state.IR_temp_2_threshold_status = new_status
-            self._reactor_box.io_panel.led_warning_temp_lane_2 = new_led
+            self.reactor_box.io_panel.led_warning_temp_lane_2 = new_led
         elif lane == LedLane.LANE_3:
             self.state.IR_temp_3_threshold_status = new_status
-            self._reactor_box.io_panel.led_warning_temp_lane_3 = new_led
+            self.reactor_box.io_panel.led_warning_temp_lane_3 = new_led
 
     def _observer_reactor_box_cable(
         self,
@@ -690,13 +692,13 @@ class Controller:
         self.experiment_supervisor.sample_was_taken_on(lane)
         if lane == LedLane.LANE_1:
             self.state.sample_lane_1 = False
-            self._reactor_box.io_panel.led_state_lane_1 = LedState.LOW
+            self.reactor_box.io_panel.led_state_lane_1 = LedState.LOW
         elif lane == LedLane.LANE_2:
             self.state.sample_lane_2 = False
-            self._reactor_box.io_panel.led_state_lane_2 = LedState.LOW
+            self.reactor_box.io_panel.led_state_lane_2 = LedState.LOW
         elif lane == LedLane.LANE_3:
             self.state.sample_lane_3 = False
-            self._reactor_box.io_panel.led_state_lane_3 = LedState.LOW
+            self.reactor_box.io_panel.led_state_lane_3 = LedState.LOW
 
     def _observer_uv_sensor(
         self,
@@ -713,11 +715,11 @@ class Controller:
         hinterlegten Wert fallen soll wieder auf grün geschaltet werden.
         """
         if uv_index > self.config.threshold_uv:
-            self._reactor_box.io_panel.led_uv_warning = LedState.LOW
+            self.reactor_box.io_panel.led_uv_warning = LedState.LOW
         else:
-            self._reactor_box.io_panel.led_uv_warning = LedState.HIGH
+            self.reactor_box.io_panel.led_uv_warning = LedState.HIGH
 
-        self._reactor_box.io_panel.led_uv_installed = (
+        self.reactor_box.io_panel.led_uv_installed = (
             LedState.HIGH if self.state.uv_installed else LedState.LOW
         )
 
@@ -773,7 +775,7 @@ class Controller:
             led = LedState.BLINK_SLOW
         else:
             raise RuntimeError(f"Unhandled status {status}")
-        self._power_box.io_panel.led_warning_temp_ambient = led
+        self.power_box.io_panel.led_warning_temp_ambient = led
 
     def _observer_thermocouple(
         self,
@@ -807,10 +809,10 @@ class Controller:
             st.thermocouple_theshold_status = ThresholdStatus.OK_AGAIN
 
         if st.thermocouple_theshold_status == ThresholdStatus.OK:
-            self._reactor_box.io_panel.led_warning_thermocouple = LedState.HIGH
+            self.reactor_box.io_panel.led_warning_thermocouple = LedState.HIGH
         elif st.thermocouple_theshold_status == ThresholdStatus.OK_AGAIN:
-            self._reactor_box.io_panel.led_warning_thermocouple = (
+            self.reactor_box.io_panel.led_warning_thermocouple = (
                 LedState.BLINK_SLOW
             )
         else:
-            self._reactor_box.io_panel.led_warning_thermocouple = LedState.HIGH
+            self.reactor_box.io_panel.led_warning_thermocouple = LedState.HIGH
