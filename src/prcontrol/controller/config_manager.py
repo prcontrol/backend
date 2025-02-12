@@ -1,6 +1,7 @@
 # This file contains the tools for managing and
 # loading stored configuration files
 
+import logging
 import os
 import pathlib
 import re
@@ -17,6 +18,8 @@ from prcontrol.controller.configuration import (
     TinkerforgeBricklet,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @define
 class ConfigFolder[T: ConfigObject]:
@@ -27,6 +30,7 @@ class ConfigFolder[T: ConfigObject]:
     _FILENAME_PATTERN = re.compile(r"obj_([0-9]+)\.json")
 
     def __attrs_post_init__(self) -> None:
+        logger.debug(f"Initializing config folder at {self.workspace!r}")
         if not os.path.isdir(self.workspace):
             os.makedirs(self.workspace)
         self._update()
@@ -34,6 +38,7 @@ class ConfigFolder[T: ConfigObject]:
     def _update(self) -> None:
         """Helper Method: Update configuration files from disk.
         Runs only after Initilization!"""
+        logger.debug(f"Reading config files in {self.workspace!r}")
         for file_path in os.listdir(self.workspace):
             _match = self._FILENAME_PATTERN.fullmatch(file_path)
             if _match is None:
@@ -55,7 +60,7 @@ class ConfigFolder[T: ConfigObject]:
             raise FileNotFoundError(
                 "Config for {self.name} with uid {uid} not found."
             )
-
+        logger.debug(f"Loading uid {uid} from {self.workspace!r}")
         with open(self._path_of_uid(uid)) as config:
             return self.kind.from_json(config.read())
 
@@ -64,6 +69,10 @@ class ConfigFolder[T: ConfigObject]:
         May overwrite the given `uid`.
         """
         path = self._path_of_uid(config_object.get_uid())
+        logger.debug(
+            f"Adding object {config_object.get_description()}"
+            f" to {self.workspace!r}"
+        )
         with open(path, "w") as file:
             file.write(config_object.to_json())
 
@@ -74,15 +83,18 @@ class ConfigFolder[T: ConfigObject]:
         May overwrite the given `uid`.
         Validates the json string's structure.
         """
+        logger.debug(f"Adding object from json to {self.workspace!r}")
         self.add(self.kind.from_json(config_json))
 
     def delete(self, uid: int) -> None:
         """Delete configuration `id` if exists"""
+        logger.debug(f"Deleting object with uid {uid} to {self.workspace!r}")
         if uid in self._configs:
             os.remove(self._path_of_uid(uid))
             self._configs.remove(uid)
 
     def load_all(self) -> Iterable[ConfigObject]:
+        logger.debug(f"Loading all objects from {self.workspace!r}")
         for uid in self._configs:
             yield self.load(uid)
 
@@ -95,6 +107,7 @@ class ConfigManager:
     configs: ConfigFolder[HardwareConfig]
 
     def __init__(self, base_path: str | pathlib.Path | None = None) -> None:
+        logger.info(f"ConfigManager at {base_path!r}.")
         if base_path is None:
             base_path = "./workspace"
         base_path = pathlib.Path(base_path)

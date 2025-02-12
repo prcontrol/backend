@@ -3,12 +3,12 @@ import json
 
 import pytest
 
-from prcontrol.controller.config_manager import ConfigFolder
+from prcontrol.controller.config_manager import ConfigFolder, ConfigManager
 from prcontrol.controller.configuration import (
     LED,
     EmmissionPair,
 )
-from prcontrol.webapi.api import app, config_manager
+from prcontrol.webapi.api import create_app
 from tests.test_config_folder import clean_directory
 
 
@@ -36,8 +36,15 @@ def create_mock_led(id: int, desc: str) -> LED:
     )
 
 
+config_manager: ConfigManager
+
+
 @pytest.fixture
 def client():
+    global config_manager
+    app, _, config_manager, _ = create_app(
+        ("0.0.0.0", 1337), ("0.0.0.0", 1234), mock=True
+    )
     with app.test_client() as client:
         yield client
 

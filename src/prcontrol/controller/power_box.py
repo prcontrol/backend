@@ -329,6 +329,9 @@ class PowerBox:
             self.sensor_period_ms, False, "x", 0, 0
         )
 
+        return self
+
+    def reset_leds(self) -> Self:
         for led in LedPosition.led_iter():
             self._deactivate_led_power(led)
             self._disable_led_pwm_controller(led)
@@ -340,7 +343,6 @@ class PowerBox:
             self.bricklets.servo.set_position(chan, self._PWM_MAX_DGREE)
             self.bricklets.servo.set_motion_configuration(chan, 0, 0, 0)
             self.bricklets.servo.set_enable(chan, False)
-
         return self
 
     def _callback_io16_single_input(
