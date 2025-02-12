@@ -182,10 +182,12 @@ class ExperimentRunner:
         )
 
         # Start Exposure
+        logger.debug("STARTING LED FRONT")
         self.controller.power_box.activate_led(
             LedPosition(self._lane, LedSide.FRONT),
             self._template.led_back_intensity,
         )
+        logger.debug("STARTING LED BACK")
         self.controller.power_box.activate_led(
             LedPosition(self._lane, LedSide.BACK),
             self._template.led_back_intensity,
@@ -253,6 +255,7 @@ class ExperimentRunner:
                 self.resume_experiment()
 
     def add_event(self, event: str) -> None:
+        logger.debug(f"Received event {event}")
         if self.is_running:
             time = (datetime.now() - self._start_time).total_seconds()
             self._events.append(EventPair(time, event))
@@ -279,9 +282,13 @@ class ExperimentRunner:
             self._error = True
 
     def has_uv(self) -> bool:
-        return (
-            self._template.led_back.is_uv() or self._template.led_front.is_uv()
-        )
+        try:
+            return (
+                self._template.led_back.is_uv()
+                or self._template.led_front.is_uv()
+            )
+        except AttributeError:
+            return False
 
     # Private Routines
 

@@ -47,8 +47,14 @@ def create_app(
         sleep(1.0)
         controller.reactor_box.initialize()
         logger.debug("Initialized reactor box")
-        controller.power_box.initialize().reset_leds()
+        sleep(0.1)
+        controller.power_box.initialize()
+        sleep(0.1)
+        controller.power_box.reset_leds()
         logger.debug("Initialized power box")
+
+        sleep(0.5)
+        controller.initialize()
 
     @app.route("/", methods=["GET"])
     def index() -> ResponseReturnValue:
@@ -155,11 +161,12 @@ def create_app(
     @socketio.on("connect")
     def handle_connect() -> None:
         socketio.start_background_task(target=send_data)
-        print("WebSocket-Client verbunden!")
+        logger.debug("WebSocker client connected.")
 
     @socketio.on("disconnect")
     def handle_disconnect() -> None:
-        print("WebSocket-Client getrennt!")
+        socketio.start_background_task(target=send_data)
+        logger.debug("WebSocket client disconnected.")
 
     def send_data() -> None:
         while True:
