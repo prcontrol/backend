@@ -142,6 +142,8 @@ class ExperimentTemplate(ConfigObject):
     led_back_distance_to_vial: float
     led_back_exposure_time: float
     time_points_sample_taking: tuple[int, ...]
+    size_sample: float
+    measurement_interval: float
     position_thermocouple: str
 
     def get_description(self) -> str:
@@ -158,6 +160,7 @@ class Experiment(ConfigObject):
     lab_notebook_entry: str
     date: str
     config_file: HardwareConfig
+    template_uid: int
     active_lane: int
     led_front: LED
     led_front_intensity: int

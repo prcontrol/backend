@@ -107,6 +107,7 @@ class ExperimentRunner:
 
     # Data of current experiment
     _template: ExperimentTemplate
+    _lab_notebook_entry: str
     _measurements: list[MeasuredDataAtTimePoint]
     _events: list[EventPair]
     _canceled: bool
@@ -132,7 +133,7 @@ class ExperimentRunner:
     # Public routines
 
     def start_experiment(
-        self, template: ExperimentTemplate, uid: int, measure_intervall: float
+        self, template: ExperimentTemplate, uid: int, lab_notebook_entry: str
     ) -> None:
         # Setup state
         self.state_sample = 0
@@ -144,6 +145,7 @@ class ExperimentRunner:
 
         # Setup data collection
         self._template = template
+        self._lab_notebook_entry = lab_notebook_entry
         self._measurements = []
         self._events = []
         self._neighbours = []
@@ -167,7 +169,9 @@ class ExperimentRunner:
         self._timer_led_back.set(
             timedelta(seconds=self._template.led_back_exposure_time)
         )
-        self._scheduler = MeasurementScheduler(self._measure, measure_intervall)
+        self._scheduler = MeasurementScheduler(
+            self._measure, self._template.measurement_interval
+        )
         self._scheduler.start()
 
         # Configure LEDs ... is this mA?
@@ -302,9 +306,10 @@ class ExperimentRunner:
         data = Experiment(
             uid=self._uid,
             name=template.name,
-            lab_notebook_entry="",  # Frontend
+            lab_notebook_entry=self._lab_notebook_entry,
             date=self._date,
             config_file=template.config_file,
+            template_uid=self._template.get_uid(),
             active_lane=self._lane.demux(1, 2, 3),
             led_front=template.led_front,
             led_front_intensity=template.led_front_intensity,
@@ -315,7 +320,7 @@ class ExperimentRunner:
             led_back_distance_to_vial=template.led_back_distance_to_vial,
             led_back_exposure_time=template.led_back_exposure_time,
             time_points_sample_taking=template.time_points_sample_taking,
-            size_sample=0.0,  # Frontend
+            size_sample=self._template.size_sample,
             parallel_experiments=tuple(self._neighbours),
             position_thermocouple=template.position_thermocouple,
             error_occured=self._error,
@@ -423,7 +428,7 @@ class ExperimentSupervisor:
         lane: LedLane,
         template: ExperimentTemplate,
         uid: int,
-        measure_interval: float,
+        lab_notebook_entry: str,
     ) -> None:
         logger.info(
             f"Stating experiment on lane {lane}"
@@ -433,7 +438,7 @@ class ExperimentSupervisor:
             lane, self.controller
         )
         self.runner[lane.demux(0, 1, 2)].start_experiment(
-            template, uid, measure_interval
+            template, uid, lab_notebook_entry
         )
         for r in self.runner:
             if r._lane != lane:

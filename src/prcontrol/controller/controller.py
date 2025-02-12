@@ -12,6 +12,7 @@ from attrs import define, field, frozen, setters
 from tinkerforge.ip_connection import IPConnection
 
 from prcontrol.controller.common import LedLane, LedPosition, LedSide, LedState
+from prcontrol.controller.config_manager import ConfigManager
 from prcontrol.controller.configuration import Experiment
 from prcontrol.controller.experiment import ExperimentSupervisor
 from prcontrol.controller.measurements import Temperature, UvIndex, Voltage
@@ -155,6 +156,7 @@ class Controller:
     _config: ControllerConfig
 
     experiment_supervisor: ExperimentSupervisor
+    _config_manager: ConfigManager
 
     # These are used to specify the callback handlers for changes in
     # both ReactorBoxSensorState and PowerBoxSensorState.
@@ -178,12 +180,14 @@ class Controller:
         self,
         reactor_box: TfEndpoint | tuple[str, int],
         power_box: TfEndpoint | tuple[str, int],
+        config_manager: ConfigManager,
         config: None | ControllerConfig = None,
         reactor_box_sensor_period_ms: int = 200,
         power_box_sensor_period_ms: int = 200,
     ) -> None:
         logger.info("Initializing Controller")
 
+        self._config_manager = config_manager
         if not isinstance(reactor_box, TfEndpoint):
             reactor_box = TfEndpoint(*reactor_box)
         if not isinstance(power_box, TfEndpoint):
@@ -479,10 +483,8 @@ class Controller:
         return self
 
     def end_experiment(self, lane: LedLane, data: Experiment) -> None:
-        print("Experiment done, here is the data:")
-        print(data.to_json())
-        print("This was only for Debug, Programm will crash now....")
-        return  # TODO Call Frontend and config_manager
+        self._config_manager.experiments.add(data)
+        return
 
     def reset_ambient_temp_warning(self) -> Self:
         self.state.ambient_temp_status = ThresholdStatus.OK
