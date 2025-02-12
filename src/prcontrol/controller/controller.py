@@ -108,23 +108,23 @@ class ControllerConfig:
     def default_values() -> "ControllerConfig":
         # TODO get sensible values
         return ControllerConfig(
-            threshold_warn_ambient_temp=Temperature.from_celsius(0),
-            threshold_abort_ambient_temp=Temperature.from_celsius(0),
+            threshold_warn_ambient_temp=Temperature.from_celsius(35),
+            threshold_abort_ambient_temp=Temperature.from_celsius(30),
             threshold_warn_IR_temp=(
-                Temperature.from_celsius(0),
-                Temperature.from_celsius(0),
-                Temperature.from_celsius(0),
+                Temperature.from_celsius(30),
+                Temperature.from_celsius(30),
+                Temperature.from_celsius(30),
             ),
             threshold_abort_IR_temp=(
-                Temperature.from_celsius(0),
-                Temperature.from_celsius(0),
-                Temperature.from_celsius(0),
+                Temperature.from_celsius(35),
+                Temperature.from_celsius(35),
+                Temperature.from_celsius(35),
             ),
-            threshold_thermocouple_temp=Temperature.from_celsius(0),
+            threshold_thermocouple_temp=Temperature.from_celsius(30),
             threshold_thermocouple_affected_lanes=frozenset(
                 (LedLane.LANE_1, LedLane.LANE_2, LedLane.LANE_3)
             ),
-            threshold_uv=UvIndex.from_tenth_uvi(29),
+            threshold_uv=UvIndex.from_tenth_uvi(1),
         )
 
 
@@ -343,6 +343,29 @@ class Controller:
         self._power_box_ipcon.set_auto_reconnect(True)
         return self
 
+    def initialize(self) -> Self:
+        for f in self._callback_handlers_power_box:
+            self._dispatch_onchange_power_box(
+                self.power_box.sensors,
+                self.power_box.sensors,
+                f,
+                getattr(self.power_box.sensors, f.name),
+            )
+
+        for f in self._callback_handlers_reactor_box:
+            self._dispatch_onchange_reactor_box(
+                self.reactor_box.sensors,
+                self.reactor_box.sensors,
+                f,
+                getattr(self.reactor_box.sensors, f.name),
+            )
+
+        self.reactor_box.io_panel.led_state_lane_1 = LedState.LOW
+        self.reactor_box.io_panel.led_state_lane_2 = LedState.LOW
+        self.reactor_box.io_panel.led_state_lane_3 = LedState.LOW
+
+        return self
+
     def disconnect(self) -> Self:
         logger.info("Disconnecting.")
         self._reactor_box_ipcon.disconnect()
@@ -459,7 +482,7 @@ class Controller:
         print("Experiment done, here is the data:")
         print(data.to_json())
         print("This was only for Debug, Programm will crash now....")
-        raise NotImplementedError()  # Call Frontend and config_manager
+        return  # TODO Call Frontend and config_manager
 
     def reset_ambient_temp_warning(self) -> Self:
         self.state.ambient_temp_status = ThresholdStatus.OK
@@ -558,7 +581,11 @@ class Controller:
         mehrere Fehler erkannt worden sein, soll die LED schnell blinken
         (250 ms an / 250 ms aus).
         """
-        if voltage.milli_volts == 0 and self.power_box.is_led_active(led):
+        if (
+            voltage.milli_volts == 0
+            and self.power_box.is_led_active(led)
+            and False
+        ):
             self._voltage_errors.add(led)
             self.experiment_supervisor.add_event_on(led.lane, "Voltage Error")
             self.experiment_supervisor.register_error_on(led.lane)

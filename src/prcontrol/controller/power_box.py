@@ -1,6 +1,7 @@
 # mypy: disable-error-code=import-untyped
 # We dont have typing information for tinkerforge unfurtunately :(
 
+import logging
 import time
 from collections.abc import Iterable
 from enum import Enum
@@ -21,6 +22,7 @@ from prcontrol.controller.common import (
     LedLane,
     LedPosition,
     LedSide,
+    LedState,
     SensorObserver,
     StatusLeds,
     bricklet,
@@ -28,6 +30,8 @@ from prcontrol.controller.common import (
     sensor_observer_callback_dispatcher,
 )
 from prcontrol.controller.measurements import Current, Temperature, Voltage
+
+logger = logging.getLogger(__name__)
 
 
 class PowerBoxBricklets(BrickletManager):
@@ -329,6 +333,13 @@ class PowerBox:
             self.sensor_period_ms, False, "x", 0, 0
         )
 
+        self.io_panel.led_warning_temp_ambient = LedState.HIGH
+        self.io_panel.led_maintenance_active = LedState.HIGH
+        self.io_panel.led_connected = LedState.HIGH
+        self.io_panel.led_warning_voltage = LedState.HIGH
+        self.io_panel.led_warning_water = LedState.HIGH
+        self.io_panel.led_boxes_closed = LedState.HIGH
+
         return self
 
     def reset_leds(self) -> Self:
@@ -465,16 +476,16 @@ class PowerBox:
 
     def _activate_led_power(self, led: LedPosition) -> Self:
         bricklet = self._get_led_relay(led)
-        bricklet.set_selected_value(0, True)
-        time.sleep(0.01)
         bricklet.set_selected_value(1, True)
+        time.sleep(0.01)
+        bricklet.set_selected_value(0, True)
         return self
 
     def _deactivate_led_power(self, led: LedPosition) -> Self:
         bricklet = self._get_led_relay(led)
-        bricklet.set_selected_value(1, False)
-        time.sleep(0.01)
         bricklet.set_selected_value(0, False)
+        time.sleep(0.01)
+        bricklet.set_selected_value(1, False)
         return self
 
     def _set_led_pwm_from_intensity(
@@ -484,7 +495,15 @@ class PowerBox:
         assert led in self._led_max_current
         self.bricklets.servo.set_position(
             self._get_servo_channel_from_led(led),
-            int(self._PWM_MAX_DGREE * (1 - intensity)),
+            int(
+                self._PWM_MAX_DGREE
+                * self._led_max_current[led].ampere
+                * (1 - intensity)
+            ),
+        )
+        logger.debug(
+            f"Setting led {led!r} pwm to "
+            "{int(self._PWM_MAX_DGREE * (1 - intensity))}"
         )
         return self
 
@@ -502,14 +521,9 @@ class PowerBox:
         return self
 
     def set_led_max_current(self, led: LedPosition, current: Current) -> Self:
-        assert 0.0 <= current.ampere <= 1.0, "Max current is 1.0A."
+        assert 0 <= current.milli_amps <= 1000, "Max current is 1.0A."
+        logger.debug(f"Setting led max current {led} to {current!r}")
         self._led_max_current[led] = current
-
-        self.bricklets.servo.set_pulse_width(
-            self._get_servo_channel_from_led(led),
-            int(self._PWM_PERIOD_US * current.ampere),
-            self._PWM_PERIOD_US,
-        )
         return self
 
     def activate_led(self, led: LedPosition, target_intensity: float) -> Self:
@@ -518,6 +532,7 @@ class PowerBox:
         """
         assert led in self._led_max_current
         assert 0.0 <= target_intensity <= 1.0
+        logger.debug(f"Activating led {led}")
         self._led_target_intensity[led] = target_intensity
 
         start_position_for_feedback_loop = target_intensity * 0.9
@@ -529,6 +544,7 @@ class PowerBox:
 
     def deactivate_led(self, led: LedPosition) -> Self:
         """Deactivates an led."""
+        logger.debug(f"Deactivating led {led}")
         self._deactivate_led_power(led)
         self._led_target_intensity.pop(led)
         self._disable_led_pwm_controller(led)

@@ -201,19 +201,19 @@ class ReactorBox:
             )
 
         self.bricklets.uv_light.register_callback(
-            BrickletUVLightV2.CALLBACK_UVI, self._callback_uv_light
+            BrickletUVLightV2.CALLBACK_UVA, self._callback_uv_light
         )
-        self.bricklets.uv_light.set_uvi_callback_configuration(
+        self.bricklets.uv_light.set_uva_callback_configuration(
             self.sensor_period_ms, False, "x", 0, 0
         )
 
         # set all status leds to their default value
-        self.io_panel.led_state_lane_1 = LedState.LOW
-        self.io_panel.led_state_lane_2 = LedState.LOW
-        self.io_panel.led_state_lane_3 = LedState.LOW
-        self.io_panel.led_uv_installed = LedState.LOW
-        self.io_panel.led_uv_warning = LedState.LOW
-        self.io_panel.led_experiment_running = LedState.LOW
+        self.io_panel.led_state_lane_1 = LedState.HIGH
+        self.io_panel.led_state_lane_2 = LedState.HIGH
+        self.io_panel.led_state_lane_3 = LedState.HIGH
+        self.io_panel.led_uv_installed = LedState.HIGH
+        self.io_panel.led_uv_warning = LedState.HIGH
+        self.io_panel.led_experiment_running = LedState.HIGH
         self.io_panel.led_warning_temp_lane_1 = LedState.HIGH
         self.io_panel.led_warning_temp_lane_2 = LedState.HIGH
         self.io_panel.led_warning_temp_lane_3 = LedState.HIGH
@@ -233,11 +233,11 @@ class ReactorBox:
         value: bool,
     ) -> None:
         if channel == self.io_panel._CHAN_INPUT_SAMPLE_LANE_1:
-            self.sensors.lane_1_sample_taken = value
+            self.sensors.lane_1_sample_taken = not value
         elif channel == self.io_panel._CHAN_INPUT_SAMPLE_LANE_2:
-            self.sensors.lane_2_sample_taken = value
+            self.sensors.lane_2_sample_taken = not value
         elif channel == self.io_panel._CHAN_INPUT_SAMPLE_LANE_3:
-            self.sensors.lane_3_sample_taken = value
+            self.sensors.lane_3_sample_taken = not value
         elif channel == self.io_panel._CHAN_INPUT_MAINTENANCE_MODE:
             self.sensors.maintenance_mode = value
         elif channel == self.io_panel._CHAN_INPUT_CABLE_CONTROL:
