@@ -129,7 +129,10 @@ class MockController:
 
 
 def get_template_with(
-    duration_front: float, duration_back: float, samples: tuple[float, ...]
+    duration_front: float,
+    duration_back: float,
+    samples: tuple[float, ...],
+    measurement_interval: float,
 ) -> ExperimentTemplate:
     return ExperimentTemplate(
         uid=1,
@@ -193,6 +196,8 @@ def get_template_with(
         led_back_distance_to_vial=1.0,
         led_back_exposure_time=duration_back,
         time_points_sample_taking=samples,
+        size_sample=1.0,
+        measurement_interval=measurement_interval,
         position_thermocouple="bla",
     )
 
@@ -205,8 +210,8 @@ def do_exp(
 ) -> ExperimentLogger:
     logger = ExperimentLogger()
     controller = MockController(logger)
-    template = get_template_with(duration_front, duration_back, samples)
-    controller.supervisor.start_experiment_on(lane, template, 0, 1.0)
+    template = get_template_with(duration_front, duration_back, samples, 1.0)
+    controller.supervisor.start_experiment_on(lane, template, 0, "")
 
     sample_time = 0
     for sample in samples:
@@ -297,8 +302,8 @@ def test_measurements():
 def test_register_event_and_error():
     logger = ExperimentLogger()
     controller = MockController(logger)
-    template = get_template_with(5, 5, ())
-    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, 1.0)
+    template = get_template_with(5, 5, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(1)
     controller.supervisor.register_error_on(LedLane.LANE_1)
     controller.supervisor.add_event_on(LedLane.LANE_1, "/Test/")
@@ -323,8 +328,8 @@ def test_pause_resume():
 
     logger = ExperimentLogger()
     controller = MockController(logger)
-    template = get_template_with(10, 10, samples)
-    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, 1.0)
+    template = get_template_with(10, 10, samples, 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(1)
     controller.supervisor.pause_experiment_on(LedLane.LANE_1)
     time.sleep(1)
@@ -372,8 +377,8 @@ def test_pause_resume():
 def test_cancel():
     logger = ExperimentLogger()
     controller = MockController(logger)
-    template = get_template_with(10, 10, (1, 2, 5))
-    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, 1.0)
+    template = get_template_with(10, 10, (1, 2, 5), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(5)
     controller.supervisor.cancel_experiment_on(LedLane.LANE_1)
     time.sleep(1)
@@ -385,8 +390,8 @@ def test_cancel():
 def test_double_pause():
     logger = ExperimentLogger()
     controller = MockController(logger)
-    template = get_template_with(3, 3, ())
-    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, 1.0)
+    template = get_template_with(3, 3, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(1)
     controller.supervisor.pause_experiment_on(LedLane.LANE_1)
     controller.supervisor.pause_experiment_on(LedLane.LANE_1)
@@ -399,8 +404,8 @@ def test_double_pause():
 def test_double_resume():
     logger = ExperimentLogger()
     controller = MockController(logger)
-    template = get_template_with(3, 3, ())
-    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, 1.0)
+    template = get_template_with(3, 3, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(1)
     controller.supervisor.pause_experiment_on(LedLane.LANE_1)
     time.sleep(1)

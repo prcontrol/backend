@@ -8,6 +8,7 @@ from flask.typing import ResponseReturnValue
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
+from prcontrol.controller.common import LedLane
 from prcontrol.controller.config_manager import ConfigFolder, ConfigManager
 from prcontrol.controller.controller import (
     Controller,
@@ -37,6 +38,7 @@ def create_app(
     controller = Controller(
         reactor_box=reactor_box_endpoint,
         power_box=power_box_endpoint,
+        config_manager=config_manager,
         config=ControllerConfig.default_values(),
     )
 
@@ -156,6 +158,118 @@ def create_app(
         ]
 
         return json.dumps({"results": list_of_configs}), 200
+
+    # Routes for Experiments
+
+    @app.route("/start_experiment", methods=["GET"])
+    def start_experiment() -> ResponseReturnValue:
+        # Read and parse parameters
+        _lane_nr = request.args.get("lane")
+        if not _lane_nr:
+            return "start_experiment expects a lane", 400
+        try:
+            lane_nr = int(_lane_nr)
+        except ValueError:
+            return "lane must be an integer", 400
+
+        _template_id = request.args.get("template")
+        if not _template_id:
+            return "start_experiment expects a template id", 400
+        try:
+            template_id = int(_template_id)
+            template = config_manager.experiment_templates.load(template_id)
+        except ValueError:
+            return "template must be an integer", 400
+        except FileNotFoundError:
+            return "no template with provided uid found", 400
+
+        _lab_notebook_entry = request.args.get("lab_notebook_entry")
+        if not _lab_notebook_entry:
+            return "start_experiment expects a notebook entry", 400
+        try:
+            lab_notebook_entry = str(_lab_notebook_entry)
+        except ValueError:
+            return "notebook entry must be a string", 400
+
+        # Start task
+        if lane_nr == 0:
+            lane = LedLane.LANE_1
+        elif lane_nr == 1:
+            lane = LedLane.LANE_2
+        elif lane_nr == 2:
+            lane = LedLane.LANE_3
+        else:
+            return "invalid lane nr", 400
+
+        uid = config_manager.experiments.next_uid()
+
+        controller.experiment_supervisor.start_experiment_on(
+            lane, template, uid, lab_notebook_entry
+        )
+        return "experiment was started", 200
+
+    @app.route("/pause_experiment", methods=["GET"])
+    def pause_experiment() -> ResponseReturnValue:
+        _lane_nr = request.args.get("lane")
+        if not _lane_nr:
+            return "start_experiment expects a lane", 400
+        try:
+            lane_nr = int(_lane_nr)
+        except ValueError:
+            return "lane must be an integer", 400
+        if lane_nr == 0:
+            lane = LedLane.LANE_1
+        elif lane_nr == 1:
+            lane = LedLane.LANE_2
+        elif lane_nr == 2:
+            lane = LedLane.LANE_3
+        else:
+            return "invalid lane nr", 400
+
+        controller.experiment_supervisor.pause_experiment_on(lane)
+        return "experiment was paused"
+
+    @app.route("/resume_experiment", methods=["GET"])
+    def resume_experiment() -> ResponseReturnValue:
+        _lane_nr = request.args.get("lane")
+        if not _lane_nr:
+            return "start_experiment expects a lane", 400
+        try:
+            lane_nr = int(_lane_nr)
+        except ValueError:
+            return "lane must be an integer", 400
+        if lane_nr == 0:
+            lane = LedLane.LANE_1
+        elif lane_nr == 1:
+            lane = LedLane.LANE_2
+        elif lane_nr == 2:
+            lane = LedLane.LANE_3
+        else:
+            return "invalid lane nr", 400
+
+        controller.experiment_supervisor.resume_experiment_on(lane)
+        return "experiment was resumed", 200
+
+    @app.route("/cancel_experiment", methods=["GET"])
+    def cancel_experiment() -> ResponseReturnValue:
+        _lane_nr = request.args.get("lane")
+        if not _lane_nr:
+            return "start_experiment expects a lane", 400
+        try:
+            lane_nr = int(_lane_nr)
+        except ValueError:
+            return "lane must be an integer", 400
+        if lane_nr == 0:
+            lane = LedLane.LANE_1
+        elif lane_nr == 1:
+            lane = LedLane.LANE_2
+        elif lane_nr == 2:
+            lane = LedLane.LANE_3
+        else:
+            return "invalid lane nr", 400
+
+        controller.experiment_supervisor.cancel_experiment_on(lane)
+        return "canceled experiment", 200
 
     # Websocket part:
     @socketio.on("connect")

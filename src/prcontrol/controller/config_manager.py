@@ -29,6 +29,9 @@ class ConfigFolder[T: ConfigObject]:
     _configs: set[int] = field(init=False, factory=set)
     _FILENAME_PATTERN = re.compile(r"obj_([0-9]+)\.json")
 
+    _uids: list[int] = []
+    _uids_initialized: bool = False
+
     def __attrs_post_init__(self) -> None:
         logger.debug(f"Initializing config folder at {self.workspace!r}")
         if not os.path.isdir(self.workspace):
@@ -85,6 +88,16 @@ class ConfigFolder[T: ConfigObject]:
         """
         logger.debug(f"Adding object from json to {self.workspace!r}")
         self.add(self.kind.from_json(config_json))
+
+    def next_uid(self) -> int:
+        """Returns the next free UID and reserves it for runtime."""
+        if not self._uids_initialized:
+            for obj in self.load_all():
+                self._uids.append(obj.get_uid())
+        self._uids_initialized = True
+        max_uid = max(self._uids) if len(self._uids) > 0 else -1
+        self._uids.append(max_uid + 1)
+        return max_uid + 1
 
     def delete(self, uid: int) -> None:
         """Delete configuration `id` if exists"""
