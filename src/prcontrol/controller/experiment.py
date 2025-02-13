@@ -185,15 +185,17 @@ class ExperimentRunner:
         self._scheduler.start()
 
         # Configure LEDs ... is this mA?
-        self.controller.power_box.set_led_max_current(
-            LedPosition(self._lane, LedSide.FRONT),
-            Current.from_milli_amps(self._template.led_front.max_current),
-        )
+        if self._led_front_used:
+            self.controller.power_box.set_led_max_current(
+                LedPosition(self._lane, LedSide.FRONT),
+                Current.from_milli_amps(self._template.led_front.max_current),
+            )
 
-        self.controller.power_box.set_led_max_current(
-            LedPosition(self._lane, LedSide.BACK),
-            Current.from_milli_amps(self._template.led_back.max_current),
-        )
+        if self._led_back_used:
+            self.controller.power_box.set_led_max_current(
+                LedPosition(self._lane, LedSide.BACK),
+                Current.from_milli_amps(self._template.led_back.max_current),
+            )
 
         # Start Exposure
         if self._led_front_used:
@@ -299,9 +301,16 @@ class ExperimentRunner:
 
     def has_uv(self) -> bool:
         try:
+            front_uv = (
+                self._template.led_front.is_uv() if self._led_front_used
+                    else False
+            )
+            back_uv = (
+                self._template.led_back.is_uv() if self._led_back_used
+                    else False
+            )
             return (
-                self._template.led_back.is_uv()
-                or self._template.led_front.is_uv()
+                back_uv or front_uv
             )
         except AttributeError:
             return False
