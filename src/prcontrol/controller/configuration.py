@@ -133,11 +133,11 @@ class ExperimentTemplate(ConfigObject):
     date: str
     config_file: HardwareConfig
     active_lane: int
-    led_front: LED
+    led_front: LED | None
     led_front_intensity: int
     led_front_distance_to_vial: float
     led_front_exposure_time: float
-    led_back: LED
+    led_back: LED | None
     led_back_intensity: int
     led_back_distance_to_vial: float
     led_back_exposure_time: float
