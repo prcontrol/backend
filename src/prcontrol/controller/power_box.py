@@ -9,6 +9,7 @@ from functools import partial
 from typing import Self
 
 import attrs
+from attr import dataclass, field
 from tinkerforge.bricklet_industrial_dual_relay import (
     BrickletIndustrialDualRelay,
 )
@@ -204,6 +205,59 @@ class PowerBoxStatusLeds(StatusLeds):
         }
 
 
+@dataclass
+class PidController:
+    target_current: Current
+    last_timepoint_sec: float
+    last_error: float
+    integral_error: float
+
+    K_p: float = field(default=1.0, kw_only=True)
+    T_i: float = field(default=1.0, kw_only=True)
+    T_d: float = field(default=1.0, kw_only=True)
+
+    def _error_fun(self, current: Current) -> float:
+        return self.target_current.ampere - current.ampere
+
+    def update_with_new_measurement(self, current: Current) -> float:
+        now = time.time()
+        delta_seconds = now - self.last_timepoint_sec
+
+        new_error = self._error_fun(current)
+        delta_error = new_error - self.last_error
+        derivative_error = delta_error / delta_seconds
+
+        self.integral_error += new_error * delta_seconds
+        self.last_timepoint_sec = now
+        self.last_error = new_error
+
+        return self.K_p * (
+            new_error
+            + self.integral_error / self.T_i
+            + self.T_d * derivative_error
+        )
+
+
+@dataclass
+class PidControllerBootstrapper:
+    target_current: Current
+
+    def initialize(self, current: Current) -> tuple[float, PidController]:
+        controller = PidController(
+            target_current=self.target_current,
+            last_timepoint_sec=time.time(),
+            last_error=0.0,
+            integral_error=0.0,
+        )
+
+        intitial_intensity = self.target_current.ampere * 0.8
+
+        return intitial_intensity, controller
+
+
+type LedPid = PidController | PidControllerBootstrapper
+
+
 class PowerBox:
     bricklets: PowerBoxBricklets
 
@@ -216,7 +270,7 @@ class PowerBox:
     _PWM_MAX_DGREE = 10000
 
     _led_max_current: dict[LedPosition, Current]
-    _led_target_intensity: dict[LedPosition, float]
+    _led_pid: dict[LedPosition, LedPid]
 
     def __init__(
         self,
@@ -231,7 +285,7 @@ class PowerBox:
         self.sensor_period_ms = sensor_period_ms
 
         self._led_max_current = dict()
-        self._led_target_intensity = dict()
+        self._led_pid = dict()
 
     def initialize(self) -> Self:
         self.io_panel.initialize()
@@ -429,6 +483,18 @@ class PowerBox:
             case LedPosition(LedLane.LANE_3, LedSide.BACK):
                 s.current_lane_3_back = Current.from_milli_amps(current)
 
+        if led not in self._led_pid:
+            return
+
+        current_ = Current.from_milli_amps(current)
+        controller = self._led_pid[led]
+        if isinstance(controller, PidControllerBootstrapper):
+            intensity, new_controller = controller.initialize(current_)
+            self._led_pid[led] = new_controller
+        else:
+            intensity = controller.update_with_new_measurement(current_)
+        self._set_led_pwm_abosulute_intensity(led, intensity)
+
     def _callback_total_voltage(self, voltage: int) -> None:
         self.sensors.voltage_total = Voltage.from_milli_volts(voltage)
 
@@ -488,22 +554,14 @@ class PowerBox:
         bricklet.set_selected_value(1, False)
         return self
 
-    def _set_led_pwm_from_intensity(
+    def _set_led_pwm_abosulute_intensity(
         self, led: LedPosition, intensity: float
     ) -> Self:
         assert 0.0 <= intensity <= 1.0
         assert led in self._led_max_current
         self.bricklets.servo.set_position(
             self._get_servo_channel_from_led(led),
-            int(
-                self._PWM_MAX_DGREE
-                * self._led_max_current[led].ampere
-                * (1 - intensity)
-            ),
-        )
-        logger.debug(
-            f"Setting led {led!r} pwm to "
-            "{int(self._PWM_MAX_DGREE * (1 - intensity))}"
+            int(self._PWM_MAX_DGREE * (1 - intensity)),
         )
         return self
 
@@ -532,13 +590,16 @@ class PowerBox:
         """
         assert led in self._led_max_current
         assert 0.0 <= target_intensity <= 1.0
-        logger.debug(f"Activating led {led}")
-        self._led_target_intensity[led] = target_intensity
 
-        start_position_for_feedback_loop = target_intensity * 0.9
-        self._set_led_pwm_from_intensity(led, start_position_for_feedback_loop)
+        logger.debug(f"Activating led {led}")
+
+        self._set_led_pwm_abosulute_intensity(led, 0.0)
         self._enable_led_pwm(led)
         self._activate_led_power(led)
+
+        self._led_pid[led] = PidControllerBootstrapper(
+            target_current=self._led_max_current[led] * target_intensity
+        )
 
         return self
 
@@ -546,12 +607,10 @@ class PowerBox:
         """Deactivates an led."""
         logger.debug(f"Deactivating led {led}")
         self._deactivate_led_power(led)
-        self._led_target_intensity.pop(led)
+        self._led_pid.pop(led)
         self._disable_led_pwm_controller(led)
 
         return self
 
     def is_led_active(self, led: LedPosition) -> bool:
-        return led in self._led_target_intensity
-
-    # TODO: Feedback loop
+        return led in self._led_pid
