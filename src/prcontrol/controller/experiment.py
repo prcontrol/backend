@@ -137,8 +137,8 @@ class ExperimentRunner:
     ) -> None:
         # Setup state
         self.state_sample = 0
-        self.state_led_back = True
-        self.state_led_front = True
+        self.state_led_back = template.led_back is not None
+        self.state_led_front = template.led_front is not None
         self.is_running = True
         self.needs_sample = False
         self.state_paused = False
@@ -163,39 +163,49 @@ class ExperimentRunner:
             self._timer_sample.set(
                 timedelta(seconds=self._template.time_points_sample_taking[0])
             )
-        self._timer_led_front.set(
-            timedelta(seconds=self._template.led_front_exposure_time)
-        )
-        self._timer_led_back.set(
-            timedelta(seconds=self._template.led_back_exposure_time)
-        )
+        if self.state_led_front:
+            self._timer_led_front.set(
+                timedelta(seconds=self._template.led_front_exposure_time)
+            )
+        if self.state_led_back:
+            self._timer_led_back.set(
+                timedelta(seconds=self._template.led_back_exposure_time)
+            )
         self._scheduler = MeasurementScheduler(
             self._measure, self._template.measurement_interval
         )
         self._scheduler.start()
 
         # Configure LEDs ... is this mA?
-        self.controller.power_box.set_led_max_current(
-            LedPosition(self._lane, LedSide.FRONT),
-            Current.from_milli_amps(self._template.led_front.max_current),
-        )
+        if self.state_led_front:
+            if self._template.led_front is None:
+                raise ValueError("Should never get here")
+            self.controller.power_box.set_led_max_current(
+                LedPosition(self._lane, LedSide.FRONT),
+                Current.from_milli_amps(self._template.led_front.max_current),
+            )
 
-        self.controller.power_box.set_led_max_current(
-            LedPosition(self._lane, LedSide.BACK),
-            Current.from_milli_amps(self._template.led_back.max_current),
-        )
+        if self.state_led_back:
+            if self._template.led_back is None:
+                raise ValueError("Should never get here")
+            self.controller.power_box.set_led_max_current(
+                LedPosition(self._lane, LedSide.BACK),
+                Current.from_milli_amps(self._template.led_back.max_current),
+            )
 
         # Start Exposure
-        logger.debug("STARTING LED FRONT")
-        self.controller.power_box.activate_led(
-            LedPosition(self._lane, LedSide.FRONT),
-            self._template.led_back_intensity,
-        )
-        logger.debug("STARTING LED BACK")
-        self.controller.power_box.activate_led(
-            LedPosition(self._lane, LedSide.BACK),
-            self._template.led_back_intensity,
-        )
+        if self.state_led_front:
+            logger.debug("STARTING LED FRONT")
+            self.controller.power_box.activate_led(
+                LedPosition(self._lane, LedSide.FRONT),
+                self._template.led_back_intensity,
+            )
+        if self.state_led_back:
+            logger.debug("STARTING LED BACK")
+            self.controller.power_box.activate_led(
+                LedPosition(self._lane, LedSide.BACK),
+                self._template.led_back_intensity,
+            )
 
         # Register Start
         self.add_event("experiment was started")
@@ -286,13 +296,17 @@ class ExperimentRunner:
             self._error = True
 
     def has_uv(self) -> bool:
-        try:
-            return (
-                self._template.led_back.is_uv()
-                or self._template.led_front.is_uv()
-            )
-        except AttributeError:
-            return False
+        if self.state_led_front:
+            if self._template.led_front is None:
+                raise ValueError("Should never get here")
+            if self._template.led_front.is_uv():
+                return True
+        if self.state_led_back:
+            if self._template.led_back is None:
+                raise ValueError("Should never get here")
+            if self._template.led_back.is_uv():
+                return True
+        return False
 
     # Private Routines
 
