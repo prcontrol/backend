@@ -425,17 +425,20 @@ class ExperimentRunner:
 
 
 class ExperimentSupervisor:
-    runner: list[ExperimentRunner]
+    runners: list[ExperimentRunner]
     controller: "Controller"
 
     def __init__(self, controller: "Controller"):
-        self.runner = []
-        self.runner.append(ExperimentRunner(LedLane.LANE_1, controller))
-        self.runner.append(ExperimentRunner(LedLane.LANE_2, controller))
-        self.runner.append(ExperimentRunner(LedLane.LANE_3, controller))
+        self.runners = []
+        self.runners.append(ExperimentRunner(LedLane.LANE_1, controller))
+        self.runners.append(ExperimentRunner(LedLane.LANE_2, controller))
+        self.runners.append(ExperimentRunner(LedLane.LANE_3, controller))
         self.controller = controller
 
     # Public Methods for "Controller"
+
+    def is_running(self) -> bool:
+        return all(runner.is_running for runner in self.runners)
 
     def start_experiment_on(
         self,
@@ -448,43 +451,46 @@ class ExperimentSupervisor:
             f"Stating experiment on lane {lane}"
             f" using template {template.get_uid()}"
         )
-        self.runner[lane.demux(0, 1, 2)] = ExperimentRunner(
+        self.runners[lane.demux(0, 1, 2)] = ExperimentRunner(
             lane, self.controller
         )
-        self.runner[lane.demux(0, 1, 2)].start_experiment(
+
+        self.controller.experiment_started_running()
+
+        self.runners[lane.demux(0, 1, 2)].start_experiment(
             template, uid, lab_notebook_entry
         )
-        for r in self.runner:
+        for r in self.runners:
             if r._lane != lane:
                 r.registerNeighbourExperiment(uid)
 
         self.controller.state.uv_installed = any(
-            runner.has_uv() for runner in self.runner
+            runners.has_uv() for runners in self.runners
         )
 
     def pause_experiment_on(self, lane: LedLane) -> None:
         logger.debug(f"Pausing on lane {lane}.")
-        self.runner[lane.demux(0, 1, 2)].pause_experiment()
+        self.runners[lane.demux(0, 1, 2)].pause_experiment()
 
     def resume_experiment_on(self, lane: LedLane) -> None:
         logger.debug(f"Resuming on lane {lane}.")
-        self.runner[lane.demux(0, 1, 2)].resume_experiment()
+        self.runners[lane.demux(0, 1, 2)].resume_experiment()
 
     def cancel_experiment_on(self, lane: LedLane) -> None:
         logger.debug(f"Canceling on lane {lane}.")
-        self.runner[lane.demux(0, 1, 2)].cancel()
+        self.runners[lane.demux(0, 1, 2)].cancel()
 
     def sample_was_taken_on(self, lane: LedLane) -> None:
         logger.debug(f"Sample taken on lane {lane}.")
-        self.runner[lane.demux(0, 1, 2)].sample_was_taken()
+        self.runners[lane.demux(0, 1, 2)].sample_was_taken()
 
     def add_event_on(self, lane: LedLane, event: str) -> None:
         logger.debug(f"Event {event} on lane {lane}.")
-        self.runner[lane.demux(0, 1, 2)].add_event(event)
+        self.runners[lane.demux(0, 1, 2)].add_event(event)
 
     def register_error_on(self, lane: LedLane) -> None:
         logger.warning(f"Registered error on lane {lane}")
-        self.runner[lane.demux(0, 1, 2)].register_error()
+        self.runners[lane.demux(0, 1, 2)].register_error()
 
 
 def average(*data: int | float) -> float:
