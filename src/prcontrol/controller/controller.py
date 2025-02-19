@@ -484,6 +484,8 @@ class Controller:
 
     def end_experiment(self, lane: LedLane, data: Experiment) -> None:
         self._config_manager.experiments.add(data)
+        if not self.experiment_supervisor.is_running():
+            self.reactor_box.io_panel.led_experiment_running = LedState.LOW
         return
 
     def reset_ambient_temp_warning(self) -> Self:
