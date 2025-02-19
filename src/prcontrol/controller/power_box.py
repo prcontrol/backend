@@ -212,7 +212,7 @@ class PidController:
     last_error: float
     integral_error: float
 
-    K_p: float = field(default=1.0, kw_only=True)
+    K_p: float = field(default=1.0, kw_only=True)  # TODO: find constants
     T_i: float = field(default=1.0, kw_only=True)
     T_d: float = field(default=1.0, kw_only=True)
 
@@ -266,8 +266,9 @@ class PowerBox:
 
     sensor_period_ms: int
 
-    _PWM_PERIOD_US = 10000
-    _PWM_MAX_DGREE = 10000
+    _PWM_PERIOD_US: int = 10000
+    _PWM_MAX_DGREE: int = 10000
+    _SENSOR_PERIOD_PID_MS: int = 50
 
     _led_max_current: dict[LedPosition, Current]
     _led_pid: dict[LedPosition, LedPid]
@@ -360,10 +361,10 @@ class PowerBox:
             )
 
             bricklet_front.set_current_callback_configuration(
-                self.sensor_period_ms, False, "x", 0, 0
+                self._SENSOR_PERIOD_PID_MS, False, "x", 0, 0
             )
             bricklet_back.set_current_callback_configuration(
-                self.sensor_period_ms, False, "x", 0, 0
+                self._SENSOR_PERIOD_PID_MS, False, "x", 0, 0
             )
             bricklet_front.set_voltage_callback_configuration(
                 self.sensor_period_ms, False, "x", 0, 0
