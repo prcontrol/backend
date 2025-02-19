@@ -170,7 +170,9 @@ def get_template_with(
             defect=False,
             emission_spectrum=(),
             emission_spectrum_recorded_on="",
-        ),
+        )
+        if duration_front != 0.0
+        else None,
         led_front_intensity=1,
         led_front_distance_to_vial=1.0,
         led_front_exposure_time=duration_front,
@@ -191,7 +193,9 @@ def get_template_with(
             defect=False,
             emission_spectrum=(),
             emission_spectrum_recorded_on="",
-        ),
+        )
+        if duration_back != 0.0
+        else None,
         led_back_intensity=1,
         led_back_distance_to_vial=1.0,
         led_back_exposure_time=duration_back,
@@ -241,6 +245,16 @@ def test_exp_with_samples():
     assert logger.times_samples[LedLane.LANE_1] == 2
     assert logger.times_activation_led[LedLane.LANE_1] == 6
     assert logger.times_deactivation_led[LedLane.LANE_1] == 6
+
+
+def test_exp_with_single_led():
+    logger = do_exp(LedLane.LANE_1, 0.0, 5, (1, 2))
+    assert_expirement_done(logger, LedLane.LANE_1)
+    assert logger.times_activation_led[LedLane.LANE_1] == 3
+
+    logger = do_exp(LedLane.LANE_1, 5, 0.0, (1, 2))
+    assert_expirement_done(logger, LedLane.LANE_1)
+    assert logger.times_activation_led[LedLane.LANE_1] == 3
 
 
 def test_timing_of_samples():
