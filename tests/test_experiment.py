@@ -117,6 +117,9 @@ class MockController:
         self.logger = logger
         self.done = False
 
+    def experiment_started_running(self) -> None:
+        return
+
     def end_experiment(self, lane: LedLane, data: Experiment) -> None:
         assert not self.done  # Only end once
         self.done = True

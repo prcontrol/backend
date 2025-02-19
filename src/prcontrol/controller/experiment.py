@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from threading import Thread
 from typing import TYPE_CHECKING
 
-from prcontrol.controller.common import LedLane, LedPosition, LedSide, LedState
+from prcontrol.controller.common import LedLane, LedPosition, LedSide
 from prcontrol.controller.configuration import (
     EventPair,
     Experiment,
@@ -441,9 +441,8 @@ class ExperimentSupervisor:
             lane, self.controller
         )
 
-        self.controller.reactor_box.io_panel.led_experiment_running = (
-            LedState.HIGH
-        )
+        self.controller.experiment_started_running()
+
         self.runners[lane.demux(0, 1, 2)].start_experiment(
             template, uid, lab_notebook_entry
         )
