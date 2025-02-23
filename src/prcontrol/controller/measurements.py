@@ -76,3 +76,8 @@ class Current:
     @property
     def ampere(self) -> float:
         return self.milli_amps / 1000.0
+
+    def __mul__(self, other: float | int) -> "Current":
+        return self.from_milli_amps(round(self.milli_amps * other))
+
+    __rmul__ = __mul__
