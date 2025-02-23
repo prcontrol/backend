@@ -212,12 +212,14 @@ class PidController:
     last_error: float
     integral_error: float
 
-    K_p: float = field(default=1.0, kw_only=True)  # TODO: find constants
-    T_i: float = field(default=1.0, kw_only=True)
-    T_d: float = field(default=1.0, kw_only=True)
+    intensity: float
+
+    K_p: float = field(default=-0.2, kw_only=True)
+    T_i: float = field(default=100000, kw_only=True)
+    T_d: float = field(default=0.5, kw_only=True)
 
     def _error_fun(self, current: Current) -> float:
-        return self.target_current.ampere - current.ampere
+        return current.ampere - self.target_current.ampere
 
     def update_with_new_measurement(self, current: Current) -> float:
         now = time.time()
@@ -231,11 +233,13 @@ class PidController:
         self.last_timepoint_sec = now
         self.last_error = new_error
 
-        return self.K_p * (
+        self.intensity += self.K_p * (
             new_error
             + self.integral_error / self.T_i
             + self.T_d * derivative_error
         )
+
+        return self.intensity
 
 
 @dataclass
@@ -243,15 +247,14 @@ class PidControllerBootstrapper:
     target_current: Current
 
     def initialize(self, current: Current) -> tuple[float, PidController]:
+        intitial_intensity = self.target_current.ampere * 0.5
         controller = PidController(
             target_current=self.target_current,
             last_timepoint_sec=time.time(),
             last_error=0.0,
             integral_error=0.0,
+            intensity=intitial_intensity,
         )
-
-        intitial_intensity = self.target_current.ampere * 0.8
-
         return intitial_intensity, controller
 
 
@@ -268,7 +271,7 @@ class PowerBox:
 
     _PWM_PERIOD_US: int = 10000
     _PWM_MAX_DGREE: int = 10000
-    _SENSOR_PERIOD_PID_MS: int = 50
+    _SENSOR_PERIOD_PID_MS: int = 100
 
     _led_max_current: dict[LedPosition, Current]
     _led_pid: dict[LedPosition, LedPid]
@@ -494,7 +497,8 @@ class PowerBox:
             self._led_pid[led] = new_controller
         else:
             intensity = controller.update_with_new_measurement(current_)
-        self._set_led_pwm_abosulute_intensity(led, intensity)
+        intensity = min(max(intensity, 0.0), 1.0)
+        self._set_led_pwm_absolute_intensity(led, intensity)
 
     def _callback_total_voltage(self, voltage: int) -> None:
         self.sensors.voltage_total = Voltage.from_milli_volts(voltage)
@@ -555,7 +559,7 @@ class PowerBox:
         bricklet.set_selected_value(1, False)
         return self
 
-    def _set_led_pwm_abosulute_intensity(
+    def _set_led_pwm_absolute_intensity(
         self, led: LedPosition, intensity: float
     ) -> Self:
         assert 0.0 <= intensity <= 1.0
@@ -594,7 +598,7 @@ class PowerBox:
 
         logger.debug(f"Activating led {led}")
 
-        self._set_led_pwm_abosulute_intensity(led, 0.0)
+        self._set_led_pwm_absolute_intensity(led, 0.0)
         self._enable_led_pwm(led)
         self._activate_led_power(led)
 
