@@ -227,7 +227,7 @@ class ExperimentRunner:
                 )
 
     def resume_experiment(self) -> None:
-        if self.is_running and self.state_paused:
+        if self.is_running and self.state_paused and not self.needs_sample:
             self.state_paused = False
             self.add_event("experiment was resumed")
             self._timer_sample.resume()
@@ -247,6 +247,7 @@ class ExperimentRunner:
     def sample_was_taken(self) -> None:
         if self.is_running and self.needs_sample:
             self.add_event("sample was taken")
+            self.needs_sample = False
             if (
                 self.state_sample
                 == len(self._template.time_points_sample_taking)
@@ -257,7 +258,6 @@ class ExperimentRunner:
             elif self.state_sample < len(
                 self._template.time_points_sample_taking
             ):
-                self.needs_sample = False
                 timestamp = self._template.time_points_sample_taking[
                     self.state_sample
                 ]
@@ -265,7 +265,6 @@ class ExperimentRunner:
                 self._timer_sample.set(timedelta(seconds=timestamp))
                 self.resume_experiment()
             else:
-                self.needs_sample = False
                 self.resume_experiment()
 
     def add_event(self, event: str) -> None:
@@ -276,6 +275,7 @@ class ExperimentRunner:
 
     def cancel(self) -> None:
         if self.is_running:
+            self.is_running = False
             self.add_event("experiment was cancelled")
             self._canceled = True
             self.controller.power_box.deactivate_led(
@@ -311,8 +311,6 @@ class ExperimentRunner:
     # Private Routines
 
     def _finish_experiment(self) -> None:
-        if not self.is_running:
-            return
         self.add_event("experiment was finished")
         self.is_running = False
         self._scheduler.stop()
@@ -428,12 +426,20 @@ class ExperimentSupervisor:
     runners: list[ExperimentRunner]
     controller: "Controller"
 
+    # Auto Pause Feature
+    auto_paused: set[LedLane]
+    sample_was_taken_during_open: set[LedLane]
+    box_open: bool
+
     def __init__(self, controller: "Controller"):
         self.runners = []
         self.runners.append(ExperimentRunner(LedLane.LANE_1, controller))
         self.runners.append(ExperimentRunner(LedLane.LANE_2, controller))
         self.runners.append(ExperimentRunner(LedLane.LANE_3, controller))
         self.controller = controller
+        self.auto_paused = set()
+        self.sample_was_taken_during_open = set()
+        self.box_open = False
 
     # Public Methods for "Controller"
 
@@ -454,9 +460,6 @@ class ExperimentSupervisor:
         self.runners[lane.demux(0, 1, 2)] = ExperimentRunner(
             lane, self.controller
         )
-
-        self.controller.experiment_started_running()
-
         self.runners[lane.demux(0, 1, 2)].start_experiment(
             template, uid, lab_notebook_entry
         )
@@ -469,20 +472,29 @@ class ExperimentSupervisor:
         )
 
     def pause_experiment_on(self, lane: LedLane) -> None:
-        logger.debug(f"Pausing on lane {lane}.")
-        self.runners[lane.demux(0, 1, 2)].pause_experiment()
+        if not self.box_open:
+            logger.debug(f"Pausing on lane {lane}.")
+            self.runners[lane.demux(0, 1, 2)].pause_experiment()
+        else:
+            self.auto_paused.discard(lane)
 
     def resume_experiment_on(self, lane: LedLane) -> None:
-        logger.debug(f"Resuming on lane {lane}.")
-        self.runners[lane.demux(0, 1, 2)].resume_experiment()
+        if not self.box_open:
+            logger.debug(f"Resuming on lane {lane}.")
+            self.runners[lane.demux(0, 1, 2)].resume_experiment()
+        else:
+            self.auto_paused.add(lane)
 
     def cancel_experiment_on(self, lane: LedLane) -> None:
         logger.debug(f"Canceling on lane {lane}.")
         self.runners[lane.demux(0, 1, 2)].cancel()
 
     def sample_was_taken_on(self, lane: LedLane) -> None:
-        logger.debug(f"Sample taken on lane {lane}.")
-        self.runners[lane.demux(0, 1, 2)].sample_was_taken()
+        if not self.box_open:
+            logger.debug(f"Sample taken on lane {lane}.")
+            self.runners[lane.demux(0, 1, 2)].sample_was_taken()
+        else:
+            self.sample_was_taken_during_open.add(lane)
 
     def add_event_on(self, lane: LedLane, event: str) -> None:
         logger.debug(f"Event {event} on lane {lane}.")
@@ -491,6 +503,24 @@ class ExperimentSupervisor:
     def register_error_on(self, lane: LedLane) -> None:
         logger.warning(f"Registered error on lane {lane}")
         self.runners[lane.demux(0, 1, 2)].register_error()
+
+    def auto_pause_on_open_box(self) -> None:
+        self.box_open = True
+        for runner in self.runners:
+            if runner.is_running and not runner.state_paused:
+                self.auto_paused.add(runner._lane)
+                runner.pause_experiment()
+
+    def auto_resume_on_closed_box(self) -> None:
+        self.box_open = False
+        auto_paused = self.auto_paused.copy()
+        for lane in auto_paused:
+            self.auto_paused.remove(lane)
+            self.resume_experiment_on(lane)
+        sample_was_taken_during_open = self.sample_was_taken_during_open.copy()
+        for lane in sample_was_taken_during_open:
+            self.sample_was_taken_during_open.remove(lane)
+            self.sample_was_taken_on(lane)
 
 
 def average(*data: int | float) -> float:

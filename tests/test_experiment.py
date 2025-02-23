@@ -107,8 +107,10 @@ class MockController:
     logger: ExperimentLogger
     supervisor: "ExperimentSupervisor"
     done: bool
+    _direct_sample: bool
 
-    def __init__(self, logger: ExperimentLogger):
+    def __init__(self, logger: ExperimentLogger, direct_sample: bool):
+        self._direct_sample = direct_sample
         self.supervisor = ExperimentSupervisor(self)
         self.power_box = MockPowerbox(logger)
         self.state = ControllerState.default(
@@ -127,8 +129,18 @@ class MockController:
 
     def alert_take_sample(self, lane: LedLane) -> Self:
         self.logger.register_sample(lane)
-        self.supervisor.sample_was_taken_on(lane)
+        if self._direct_sample:
+            self.supervisor.sample_was_taken_on(lane)
         return self
+
+    def sample_was_taken(self, lane: LedLane) -> None:
+        self.supervisor.sample_was_taken_on(lane)
+
+    def open_box(self) -> None:
+        self.supervisor.auto_pause_on_open_box()
+
+    def close_box(self) -> None:
+        self.supervisor.auto_resume_on_closed_box()
 
 
 def get_template_with(
@@ -216,7 +228,7 @@ def do_exp(
     samples: tuple[float, ...],
 ) -> ExperimentLogger:
     logger = ExperimentLogger()
-    controller = MockController(logger)
+    controller = MockController(logger, True)
     template = get_template_with(duration_front, duration_back, samples, 1.0)
     controller.supervisor.start_experiment_on(lane, template, 0, "")
 
@@ -233,6 +245,15 @@ def assert_expirement_done(logger: ExperimentLogger, lane: LedLane):
     assert (
         logger.times_activation_led[lane] == logger.times_deactivation_led[lane]
     )
+
+
+def asser_led_off(power_box: MockPowerbox):
+    assert not power_box.led[LedPosition(LedLane.LANE_1, LedSide.FRONT)]
+    assert not power_box.led[LedPosition(LedLane.LANE_1, LedSide.BACK)]
+    assert not power_box.led[LedPosition(LedLane.LANE_2, LedSide.FRONT)]
+    assert not power_box.led[LedPosition(LedLane.LANE_2, LedSide.BACK)]
+    assert not power_box.led[LedPosition(LedLane.LANE_3, LedSide.FRONT)]
+    assert not power_box.led[LedPosition(LedLane.LANE_3, LedSide.BACK)]
 
 
 def test_simple_experiment():
@@ -318,7 +339,7 @@ def test_measurements():
 
 def test_register_event_and_error():
     logger = ExperimentLogger()
-    controller = MockController(logger)
+    controller = MockController(logger, True)
     template = get_template_with(5, 5, (), 1.0)
     controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(1)
@@ -344,7 +365,7 @@ def test_pause_resume():
     samples = (2, 2, 2)
 
     logger = ExperimentLogger()
-    controller = MockController(logger)
+    controller = MockController(logger, True)
     template = get_template_with(10, 10, samples, 1.0)
     controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(1)
@@ -393,7 +414,7 @@ def test_pause_resume():
 
 def test_cancel():
     logger = ExperimentLogger()
-    controller = MockController(logger)
+    controller = MockController(logger, True)
     template = get_template_with(10, 10, (1, 2, 5), 1.0)
     controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(5)
@@ -406,7 +427,7 @@ def test_cancel():
 
 def test_double_pause():
     logger = ExperimentLogger()
-    controller = MockController(logger)
+    controller = MockController(logger, True)
     template = get_template_with(3, 3, (), 1.0)
     controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(1)
@@ -420,7 +441,7 @@ def test_double_pause():
 
 def test_double_resume():
     logger = ExperimentLogger()
-    controller = MockController(logger)
+    controller = MockController(logger, True)
     template = get_template_with(3, 3, (), 1.0)
     controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
     time.sleep(1)
@@ -428,5 +449,154 @@ def test_double_resume():
     time.sleep(1)
     controller.supervisor.resume_experiment_on(LedLane.LANE_1)
     controller.supervisor.resume_experiment_on(LedLane.LANE_1)
+    time.sleep(3)
+    assert_expirement_done(logger, LedLane.LANE_1)
+
+
+def test_open_close():
+    logger = ExperimentLogger()
+    controller = MockController(logger, True)
+    template = get_template_with(3, 3, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
+    time.sleep(1)
+    controller.open_box()
+    asser_led_off(controller.power_box)
+    time.sleep(1)
+    asser_led_off(controller.power_box)
+    controller.close_box()
+    time.sleep(3)
+    assert_expirement_done(logger, LedLane.LANE_1)
+
+
+def test_pause_open_resume_close():
+    logger = ExperimentLogger()
+    controller = MockController(logger, True)
+    template = get_template_with(3, 3, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
+    time.sleep(1)
+    controller.supervisor.pause_experiment_on(LedLane.LANE_1)
+    asser_led_off(controller.power_box)
+    controller.open_box()
+    asser_led_off(controller.power_box)
+    time.sleep(1)
+    controller.supervisor.resume_experiment_on(LedLane.LANE_1)
+    asser_led_off(controller.power_box)
+    controller.close_box()
+    time.sleep(3)
+    assert_expirement_done(logger, LedLane.LANE_1)
+
+
+def test_pause_open_close_resume():
+    logger = ExperimentLogger()
+    controller = MockController(logger, True)
+    template = get_template_with(3, 3, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
+    time.sleep(1)
+    controller.supervisor.pause_experiment_on(LedLane.LANE_1)
+    asser_led_off(controller.power_box)
+    controller.open_box()
+    asser_led_off(controller.power_box)
+    time.sleep(1)
+    controller.close_box()
+    asser_led_off(controller.power_box)
+    controller.supervisor.resume_experiment_on(LedLane.LANE_1)
+    time.sleep(3)
+    assert_expirement_done(logger, LedLane.LANE_1)
+
+
+def test_open_pause_resume_close():
+    logger = ExperimentLogger()
+    controller = MockController(logger, True)
+    template = get_template_with(3, 3, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
+    time.sleep(1)
+    controller.open_box()
+    asser_led_off(controller.power_box)
+    controller.supervisor.pause_experiment_on(LedLane.LANE_1)
+    asser_led_off(controller.power_box)
+    time.sleep(1)
+    controller.supervisor.resume_experiment_on(LedLane.LANE_1)
+    asser_led_off(controller.power_box)
+    controller.close_box()
+    time.sleep(3)
+    assert_expirement_done(logger, LedLane.LANE_1)
+
+
+def test_open_pause_close_resume():
+    logger = ExperimentLogger()
+    controller = MockController(logger, True)
+    template = get_template_with(3, 3, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
+    time.sleep(1)
+    controller.open_box()
+    asser_led_off(controller.power_box)
+    controller.supervisor.pause_experiment_on(LedLane.LANE_1)
+    asser_led_off(controller.power_box)
+    time.sleep(1)
+    controller.close_box()
+    asser_led_off(controller.power_box)
+    controller.supervisor.resume_experiment_on(LedLane.LANE_1)
+    time.sleep(3)
+    assert_expirement_done(logger, LedLane.LANE_1)
+
+
+def test_need_open_take_close():
+    logger = ExperimentLogger()
+    controller = MockController(logger, False)
+    template = get_template_with(5, 5, tuple([1]), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
+    time.sleep(2)
+    asser_led_off(controller.power_box)
+    controller.open_box()
+    asser_led_off(controller.power_box)
+    time.sleep(1)
+    controller.sample_was_taken(LedLane.LANE_1)
+    asser_led_off(controller.power_box)
+    controller.close_box()
+    time.sleep(5)
+    assert_expirement_done(logger, LedLane.LANE_1)
+
+
+def test_need_open_close_take():
+    logger = ExperimentLogger()
+    controller = MockController(logger, False)
+    template = get_template_with(5, 5, tuple([1]), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
+    time.sleep(2)
+    asser_led_off(controller.power_box)
+    controller.open_box()
+    asser_led_off(controller.power_box)
+    time.sleep(1)
+    controller.close_box()
+    asser_led_off(controller.power_box)
+    controller.sample_was_taken(LedLane.LANE_1)
+    time.sleep(5)
+    assert_expirement_done(logger, LedLane.LANE_1)
+
+
+def test_open_open():
+    logger = ExperimentLogger()
+    controller = MockController(logger, True)
+    template = get_template_with(3, 3, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
+    time.sleep(1)
+    controller.open_box()
+    controller.open_box()
+    time.sleep(1)
+    controller.close_box()
+    time.sleep(3)
+    assert_expirement_done(logger, LedLane.LANE_1)
+
+
+def test_close_close():
+    logger = ExperimentLogger()
+    controller = MockController(logger, True)
+    template = get_template_with(3, 3, (), 1.0)
+    controller.supervisor.start_experiment_on(LedLane.LANE_1, template, 0, "")
+    time.sleep(1)
+    controller.open_box()
+    time.sleep(1)
+    controller.close_box()
+    controller.close_box()
     time.sleep(3)
     assert_expirement_done(logger, LedLane.LANE_1)

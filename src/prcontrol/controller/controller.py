@@ -526,8 +526,10 @@ class Controller:
             == CaseLidState.CLOSED
         ):
             self.power_box.io_panel.led_boxes_closed = LedState.HIGH
+            self.experiment_supervisor.auto_resume_on_closed_box()
         else:
             self.power_box.io_panel.led_boxes_closed = LedState.LOW
+            self.experiment_supervisor.auto_pause_on_open_box()
 
     def _observer_power_box_cable(
         self,
